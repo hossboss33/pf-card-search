@@ -38,13 +38,19 @@ Queries with no FTS terms but with filters (e.g. 'topic:present sort:reads')
 run as pure filtered listings without MATCH. Exclusion-only queries
 ('-crypto') apply the exclusions as a NOT IN subquery over card_fts.
 
-Snippets: snippet(card_fts, 3, '<b>', '</b>', '…', 24) on the body column.
-Snippet, tag, and cite are returned RAW — HTML-escaping is the server
-layer's job (it must escape text while preserving the <b> markers), not
-this module's.
+Snippets: snippet(card_fts, 3, char(2), char(3), '…', 24) on the body
+column, using non-printing sentinel characters as the match markers. The
+raw snippet text is then HTML-escaped and the sentinels converted to
+<b>/</b>, so SearchHit.snippet_html is safe-by-construction HTML: it can
+only ever contain escaped text plus literal <b>/</b> term markers, even
+when a disclosed card body contains markup. Consumers may render it as
+HTML without further escaping. The plain body-prefix snippet used for
+listings without a MATCH is escaped the same way. Tag and cite are still
+returned RAW — escaping those remains the consumer's job.
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 import sqlite3
@@ -56,7 +62,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from .query import ParsedQuery, parse_query
 
 BM25 = "bm25(card_fts, 5.0, 3.0, 2.0, 1.0)"
-SNIPPET_SQL = "snippet(card_fts, 3, '<b>', '</b>', '…', 24)"
+# Non-printing sentinels mark the matched terms; they are converted to
+# <b>/</b> only AFTER the snippet text has been HTML-escaped, so markup
+# inside a card body can never reach the browser unescaped.
+SNIPPET_SQL = "snippet(card_fts, 3, char(2), char(3), '…', 24)"
+_MARK_OPEN, _MARK_CLOSE = "\x02", "\x03"
 
 # Pad a stored partial pub date to the edge of its possible range.
 _PAD_MIN = ("CASE length(c.source_pub_date) "
@@ -349,6 +359,16 @@ def _fallback_snippet(body: Optional[str], max_words: int = 24) -> str:
     return " ".join(words[:max_words]) + "…"
 
 
+def _safe_snippet_html(raw: Optional[str]) -> str:
+    """Escape raw snippet text, then turn the sentinel markers into
+    <b>/</b>. The result is the ONLY HTML snippet_html may contain."""
+    if not raw:
+        return ""
+    return (html.escape(raw)
+            .replace(_MARK_OPEN, "<b>")
+            .replace(_MARK_CLOSE, "</b>"))
+
+
 # --- entry point -----------------------------------------------------------
 
 def search(conn: sqlite3.Connection, q: str, limit: int = 30, offset: int = 0,
@@ -398,7 +418,8 @@ def search(conn: sqlite3.Connection, q: str, limit: int = 30, offset: int = 0,
     codes = _topic_codes_for(conn, rows)
     hits: List[SearchHit] = []
     for r in rows:
-        snip = r["snip"] if r["snip"] is not None else _fallback_snippet(r["body_text"])
+        raw = r["snip"] if r["snip"] is not None else _fallback_snippet(r["body_text"])
+        snip = _safe_snippet_html(raw)
         hits.append(SearchHit(
             card_id=r["id"],
             tag=r["tag"] or "",

@@ -665,6 +665,55 @@ def test_injection_strings_never_raise(corpus):
 
 
 # ==========================================================================
+# snippet XSS safety: snippet_html is safe-by-construction (finding S1)
+# ==========================================================================
+
+HOSTILE_BODY = ("The effect is significant at p < .05 even though "
+                "<script>alert(1)</script> and <img src=x onerror=alert(2)> "
+                "lurk in the disclosed body.")
+
+
+@pytest.fixture()
+def hostile_corpus(tmp_path):
+    conn = open_db(tmp_path / "xss.sqlite")
+    rec = _rec(tag="Hostile body card", cite="Mallory '26",
+               body_text=HOSTILE_BODY, pocket="Case", hat="H", block="B")
+    card_id, _ = insert_card(conn, rec)
+    finish_batch(conn, IngestStats(touched_card_ids={card_id}))
+    conn.commit()
+    yield SimpleNamespace(conn=conn, card_id=card_id)
+    conn.close()
+
+
+def _markup_beyond_b_tags(snippet_html):
+    stripped = snippet_html.replace("<b>", "").replace("</b>", "")
+    return "<" in stripped or ">" in stripped
+
+
+def test_match_snippet_escapes_html_in_body(hostile_corpus):
+    res = search(hostile_corpus.conn, "significant", today=TODAY)
+    assert [h.card_id for h in res.hits] == [hostile_corpus.card_id]
+    sh = res.hits[0].snippet_html
+    # term bolding still works ...
+    assert "<b>significant</b>" in sh
+    # ... and it is the ONLY markup: everything else is escaped entities
+    assert not _markup_beyond_b_tags(sh)
+    assert "<script" not in sh and "<img" not in sh
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in sh
+    assert "p &lt; .05" in sh
+
+
+def test_listing_snippet_escapes_html_in_body(hostile_corpus):
+    # the non-MATCH plain body-prefix snippet path must be escaped too
+    res = search(hostile_corpus.conn, "", today=TODAY)
+    assert [h.card_id for h in res.hits] == [hostile_corpus.card_id]
+    sh = res.hits[0].snippet_html
+    assert "<" not in sh and ">" not in sh     # no markup at all in listings
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in sh
+    assert "p &lt; .05" in sh
+
+
+# ==========================================================================
 # hit shape, topic codes, totals, timing
 # ==========================================================================
 

@@ -309,6 +309,118 @@ def test_year_only_cite_no_url():
     assert c.source_url is None
 
 
+# --- widened cite detection + the §1.3/§3.4 analytic reconciliation --------
+
+HF_STYLE_FULLCITE = ("Author Name, 7-28-2019. Title, Reuters. "
+                     "https://x.test/a. Accessed 1-6-2020. //TP")
+
+
+def _doc(tag, *paragraph_texts):
+    from docx import Document
+    doc = Document()
+    doc.add_heading(tag, level=4)
+    for text in paragraph_texts:
+        doc.add_paragraph(text)
+    return doc
+
+
+def test_fullcite_only_cite_paragraph():
+    """The shape of most wiki-loaded PF cards (cite='' with everything in
+    fullcite): a fullcite-shaped paragraph with no short-cite prefix is
+    the cite paragraph — not grounds to call the block an analytic."""
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Moratorium collapses the grid",
+        HF_STYLE_FULLCITE,
+        "Grid operators warn that approvals freeze and blackouts follow.")))
+    assert len(parsed.cards) == 1
+    c = parsed.cards[0]
+    assert not c.is_analytic
+    assert c.cite is None
+    assert c.fullcite == HF_STYLE_FULLCITE
+    assert c.source_url == "https://x.test/a"
+    assert c.source_pub_date == "2019-07-28"
+    assert c.body_text == ("Grid operators warn that approvals freeze "
+                           "and blackouts follow.")
+
+
+def test_fullcite_only_year_signal():
+    """A bare 19xx/20xx year is enough of a signal — no URL required."""
+    full = "Jake Kessler, energy analyst at the Grid Institute, Wired, 2026"
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Queues collapse now", full,
+        "Interconnection queues have exploded beyond any precedent.")))
+    c = parsed.cards[0]
+    assert not c.is_analytic
+    assert c.cite is None
+    assert c.fullcite == full
+    assert c.source_pub_date == "2026"
+    assert c.body_text.startswith("Interconnection queues")
+
+
+def test_short_cite_path_still_takes_precedence():
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Queues collapse now",
+        "Kessler '26, Jake Kessler, 7-14-2026, https://example.com/a",
+        "Interconnection queues have exploded beyond any precedent.")))
+    c = parsed.cards[0]
+    assert c.cite == "Kessler '26"
+    assert c.fullcite == "Jake Kessler, 7-14-2026, https://example.com/a"
+    assert not c.is_analytic
+
+
+def test_leadin_then_fullcite_paragraph():
+    """A short lead-in line between the tag and a fullcite-shaped
+    paragraph: both fold into the fullcite, body starts after them."""
+    lead = "As their own author concedes:"
+    full = ("Jake Kessler, energy analyst, Wired, 7-14-2026, "
+            "https://example.com/grid-queue, DOA 8-1-2026")
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Queues collapse now", lead, full,
+        "Queues have exploded beyond precedent and reform is failing.")))
+    c = parsed.cards[0]
+    assert not c.is_analytic
+    assert c.cite is None
+    assert c.fullcite == lead + " " + full
+    assert c.source_url == "https://example.com/grid-queue"
+    assert c.body_text == ("Queues have exploded beyond precedent and "
+                           "reform is failing.")
+
+
+NO_CITE_BODY = (
+    "Prefer probability over magnitude because judges can only weigh what "
+    "is likely, speculative impacts invite infinite regress, both teams "
+    "get better clash when links are compared honestly, and every coach "
+    "teaches that a coherent story beats a pile of unlikely apocalypse "
+    "claims in front of any panel.")
+
+
+def test_no_cite_substantial_body_is_evidence():
+    """§1.3 governs the analytic rule: no recognizable cite but a
+    substantial body (>= ~40 words) is an evidence card with cite=None,
+    keyed on the body — not a tag-keyed analytic."""
+    assert dp._wc(NO_CITE_BODY) >= dp._ANALYTIC_MAX_BODY_WORDS
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Framework: prefer probability over magnitude", NO_CITE_BODY)))
+    assert len(parsed.cards) == 1
+    c = parsed.cards[0]
+    assert not c.is_analytic
+    assert c.cite is None and c.fullcite is None
+    assert c.body_text == NO_CITE_BODY
+    from carddb.keys import canonical_key
+    assert c.key() == canonical_key(NO_CITE_BODY, c.tag, False)
+
+
+def test_no_cite_short_body_still_analytic():
+    """Genuinely short no-cite explanations stay analytics (as today)."""
+    body = "their card predates the reform, extend our evidence"
+    assert dp._wc(body) < dp._ANALYTIC_MAX_BODY_WORDS
+    parsed = parse_docx_bytes(docx_bytes(_doc(
+        "Extend the uniqueness evidence", body)))
+    c = parsed.cards[0]
+    assert c.is_analytic
+    assert c.cite is None
+
+
 # --- parse_docx (path) vs parse_docx_bytes ---------------------------------
 
 def test_parse_docx_path_matches_bytes(tmp_path):

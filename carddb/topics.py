@@ -312,18 +312,44 @@ def assign_topics(conn: sqlite3.Connection,
     return stats
 
 
-def materialize_topic_ids(conn: sqlite3.Connection) -> int:
-    """Rebuild cards.topic_ids for every card: sorted JSON array of the topic
-    codes across the card's variants' rounds. Returns cards with >=1 topic."""
-    codes: Dict[int, Set[str]] = {}
-    for row in conn.execute(
+def materialize_topic_ids(conn: sqlite3.Connection,
+                          card_ids: Optional[Iterable[int]] = None) -> int:
+    """Rebuild cards.topic_ids: sorted JSON array of the topic codes across
+    each card's variants' rounds. Returns cards with >= 1 topic.
+
+    With card_ids=None (the assign_topics full rebuild) every card is
+    rewritten. With an explicit id set (dedup refreshing merge survivors)
+    only those cards are touched — and if no topics are loaded at all the
+    call is a clean no-op, leaving the cards as they were.
+    """
+    ids: Optional[List[int]] = None
+    if card_ids is not None:
+        ids = sorted({int(c) for c in card_ids})
+        if not ids:
+            return 0
+        if conn.execute("SELECT 1 FROM topics LIMIT 1").fetchone() is None:
+            return 0
+    base = (
         "SELECT DISTINCT v.card_id AS card_id, t.code AS code "
         "FROM card_variants v "
         "JOIN rounds r ON r.id = v.round_id "
         "JOIN topics t ON t.id = r.topic_id "
-        "WHERE v.card_id IS NOT NULL AND t.code IS NOT NULL"):
-        codes.setdefault(row["card_id"], set()).add(row["code"])
-    conn.execute("UPDATE cards SET topic_ids = '[]'")
+        "WHERE v.card_id IS NOT NULL AND t.code IS NOT NULL"
+    )
+    codes: Dict[int, Set[str]] = {}
+    if ids is None:
+        for row in conn.execute(base):
+            codes.setdefault(row["card_id"], set()).add(row["code"])
+        conn.execute("UPDATE cards SET topic_ids = '[]'")
+    else:
+        for chunk in _chunks(ids, 500):
+            q = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                    f"{base} AND v.card_id IN ({q})", tuple(chunk)):
+                codes.setdefault(row["card_id"], set()).add(row["code"])
+            conn.execute(
+                f"UPDATE cards SET topic_ids = '[]' WHERE id IN ({q})",
+                tuple(chunk))
     conn.executemany(
         "UPDATE cards SET topic_ids = ? WHERE id = ?",
         [(json.dumps(sorted(v)), k) for k, v in codes.items()])

@@ -49,8 +49,33 @@ def insert_card(conn: sqlite3.Connection, rec: CardRecord) -> "tuple[int, bool]"
 
     On conflict the existing row wins entirely; we only backfill fields the
     existing row is missing (a later disclosure may carry a source_url the
-    first one lacked)."""
+    first one lacked).
+
+    Layer-3 awareness (spec §0.5/§4.4): if this canonical_key was absorbed
+    by a past dedup merge, resolve to the surviving card instead of
+    resurrecting the absorbed canonical as a zero-variant orphan. Dedup
+    path-compresses card_merges, so the lookup is one hop."""
     key = rec.key()
+    merge = conn.execute(
+        "SELECT survivor_id FROM card_merges WHERE absorbed_key = ? "
+        "ORDER BY merged_at DESC LIMIT 1",
+        (key,),
+    ).fetchone()
+    if merge is not None:
+        survivor = conn.execute(
+            "SELECT id FROM cards WHERE id = ?", (merge["survivor_id"],)
+        ).fetchone()
+        if survivor is not None:
+            card_id = survivor["id"]
+            conn.execute(
+                "UPDATE cards SET "
+                " source_url = COALESCE(source_url, ?), "
+                " source_pub_date = COALESCE(source_pub_date, ?), "
+                " fullcite = COALESCE(fullcite, ?) "
+                "WHERE id = ?",
+                (rec.source_url, rec.source_pub_date, rec.fullcite, card_id),
+            )
+            return card_id, False
     cur = conn.execute(
         "INSERT INTO cards (canonical_key, tag, cite, fullcite, body_text, body_len, "
         " source_url, source_pub_date, is_analytic) "

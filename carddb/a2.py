@@ -32,6 +32,20 @@ def a2_target(block_title: Optional[str]) -> Optional[str]:
     return norm or None
 
 
+def a2_display(block_title: Optional[str]) -> str:
+    """Display form of an answer-block title: strip the A2:/AT: prefix and
+    any leading numbering but PRESERVE the original casing/punctuation.
+    normalize() output is for hashing/matching only and must never be shown
+    as prose (§3.5); use this for anything user-facing."""
+    if not block_title:
+        return ""
+    s = _LEADING_NUMBERING.sub("", block_title)
+    m = _A2_PREFIX.match(s) or _A2_PREFIX_TIGHT.match(s)
+    if m:
+        s = s[m.end():]
+    return s.strip()
+
+
 def argument_key(block_title: Optional[str]) -> Optional[str]:
     """Normalized form of any block title (answer prefix stripped), used
     to match an argument's title against disclosed A2 targets."""

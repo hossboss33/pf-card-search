@@ -79,7 +79,8 @@ Then:
 | `export --cards 1,2,3 --out f.docx` | Verbatim-true .docx export (house or verbatim preset) |
 | `citehealth` | sample source URLs: alive / redirected / paywalled / dead |
 | `stats` | corpus counts |
-| `backup` | copy the sqlite to `backups/`, keep 8 |
+| `reindex` | rebuild FTS rows + derived aggregates from the tables of record |
+| `backup` | WAL-safe online backup to `backups/`, keep 8 |
 
 ## Search operators
 

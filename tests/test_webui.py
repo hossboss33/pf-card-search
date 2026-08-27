@@ -6,6 +6,7 @@ disclosed evidence. Also runs scripts/style_lint.py as a test, and checks
 the empty-database renders (the M0 done-check).
 """
 import json
+import re
 import subprocess
 import sys
 from datetime import date, timedelta
@@ -149,11 +150,23 @@ def _seed(conn):
     c5, _ = insert_card(conn, rec5)
     attach_variant(conn, c5, rec5, d3, r3)
 
+    # a card whose disclosed BODY TEXT contains hostile markup: search
+    # snippets must ship it escaped (snippet_html is safe-by-construction)
+    rec6 = CardRecord(
+        tag="Fixture: hostile body text card",
+        cite="Mallory '26",
+        body_text=("Fixture card body: sneakyxss findings significant at "
+                   "p < .05 even though <script>alert(1)</script> and "
+                   "<img src=x onerror=alert(2)> lurk in the body."),
+        block="Funding", ordinal=2)
+    c6, _ = insert_card(conn, rec6)
+    attach_variant(conn, c6, rec6, d3, r3)
+
     for cid, codes in ((c1, ["T-PRES"]), (c2, ["T-PRES"]), (c4, ["T-PAST"]),
-                       (c5, ["T-PAST"])):
+                       (c5, ["T-PAST"]), (c6, ["T-PAST"])):
         conn.execute("UPDATE cards SET topic_ids = ? WHERE id = ?",
                      (json.dumps(codes), cid))
-    stats.touched_card_ids.update([c1, c2, c3, c4, c5])
+    stats.touched_card_ids.update([c1, c2, c3, c4, c5, c6])
     finish_batch(conn, stats)
 
     conn.execute(
@@ -169,7 +182,8 @@ def _seed(conn):
             "INSERT INTO card_box_members (box_id, card_id, added_at) VALUES (?,?,?)",
             (box_id, cid, now_iso()))
     conn.commit()
-    ids.update(card1=c1, card2=c2, card3=c3, card4=c4, card5=c5, box=box_id)
+    ids.update(card1=c1, card2=c2, card3=c3, card4=c4, card5=c5, card6=c6,
+               box=box_id)
     return ids
 
 
@@ -226,6 +240,32 @@ def test_search_topic_filter(env):
     tags = [h["tag"] for h in r.json()["hits"]]
     assert any("older topic" in t for t in tags)
     assert not any("queue reform" in t for t in tags)
+
+
+def test_search_snippet_xss_escaped_html_page(env):
+    # a disclosed body containing markup must reach the browser escaped:
+    # entities only, never executable tags (stored-XSS regression)
+    r = env.client.get("/search", params={"q": "sneakyxss"})
+    assert r.status_code == 200
+    page = r.text.replace('<script src="/static/app.js">', "")
+    assert "<script" not in page
+    assert "<img" not in r.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
+    assert "p &lt; .05" in r.text
+    assert "<b>sneakyxss</b>" in r.text     # term bolding still works
+
+
+def test_search_snippet_xss_escaped_json(env):
+    r = env.client.get("/search", params={"q": "sneakyxss", "format": "json"})
+    assert r.status_code == 200
+    hits = r.json()["hits"]
+    assert len(hits) == 1
+    sh = hits[0]["snippet_html"]
+    stripped = sh.replace("<b>", "").replace("</b>", "")
+    assert "<" not in stripped and ">" not in stripped   # only <b> markup
+    assert "<b>sneakyxss</b>" in sh
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in sh
+    assert "&lt;img src=x onerror=alert(2)&gt;" in sh
 
 
 def test_card_page(env):
@@ -358,6 +398,68 @@ def test_boxes_create_add_remove_import(env):
     assert "Fixture imported box" in r.text and "queue reform" in r.text
 
 
+def test_box_add_missing_card_redirects_not_500(env):
+    # a card merged away by dedup while the page was open: adding its stale
+    # id must redirect back to the box, not 500 on the FK constraint
+    box_id = env.ids["box"]
+
+    def members():
+        conn = open_db(env.db)
+        n = conn.execute("SELECT COUNT(*) FROM card_box_members WHERE box_id = ?",
+                         (box_id,)).fetchone()[0]
+        conn.close()
+        return n
+
+    before = members()
+    r = env.client.post("/boxes/%d/add" % box_id, data={"card_id": "999999"},
+                        follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/boxes/%d" % box_id
+    assert members() == before   # nothing was inserted
+
+
+def test_a2_display_strips_prefix_preserves_text():
+    from carddb.a2 import a2_display
+    assert a2_display("A2: China Won't Invade Taiwan") == "China Won't Invade Taiwan"
+    assert a2_display("AT Cyber DA") == "Cyber DA"
+    assert a2_display("2. A2 - Econ Collapse") == "Econ Collapse"
+    assert a2_display("Framework") == "Framework"   # non-answer titles pass through
+    assert a2_display(None) == ""
+
+
+def test_card_page_shows_original_a2_target_text(env):
+    # card2's block is "A2: Grid Reliability": the answers line must show
+    # the original title, never the normalized matching key (spec §3.5)
+    r = env.client.get("/card/%d" % env.ids["card2"])
+    assert r.status_code == 200
+    assert "This card answers: Grid Reliability" in r.text
+    assert "grid reliability</p>" not in r.text
+
+
+def test_card_page_a2_target_preserves_punctuation(tmp_path):
+    dbp = tmp_path / "a2.sqlite"
+    conn = open_db(dbp)
+    conn.execute("INSERT INTO documents (sha256, origin) VALUES ('a2-doc', 'test')")
+    doc = conn.execute("SELECT id FROM documents").fetchone()[0]
+    rec = CardRecord(
+        tag="Fixture answer: Taiwan invasion unlikely",
+        cite="Chen '26",
+        body_text="Fixture card body: invasion is unlikely for many reasons.",
+        block="A2: China Won't Invade Taiwan", ordinal=0)
+    cid, _ = insert_card(conn, rec)
+    attach_variant(conn, cid, rec, doc, None)
+    finish_batch(conn, IngestStats(touched_card_ids={cid}))
+    conn.commit()
+    conn.close()
+    app = create_app(db_path=dbp)
+    with TestClient(app) as client:
+        r = client.get("/card/%d" % cid)
+        assert r.status_code == 200
+        # Jinja escapes the apostrophe; the original casing/punctuation shows
+        assert "This card answers: China Won&#39;t Invade Taiwan" in r.text
+        assert "china wont invade taiwan" not in r.text
+
+
 def test_rss_feed(env):
     r = env.client.get("/feed/topic/T-PRES.rss")
     assert r.status_code == 200
@@ -373,6 +475,22 @@ def test_stats_page(env):
     assert r.status_code == 200
     assert "Canonical cards" in r.text
     assert "unassigned" in r.text.lower()   # §6.2: never silently guess topics
+
+
+def test_stats_counts_exclude_analytics(env):
+    # spec §1.3: analytics are excluded from card counts by default. T-PRES
+    # has evidence c1+c2 and analytic c3 -> By-topic must say 2, not 3.
+    r = env.client.get("/stats")
+    assert r.status_code == 200
+    m = re.search(r'/topic/T-PRES">T-PRES</a></td><td>(\d+)</td>', r.text)
+    assert m, "T-PRES row missing from the By-topic table"
+    assert m.group(1) == "2"
+    # By-season likewise: season 2025 has evidence c1,c2,c4,c5,c6 plus
+    # analytic c3 -> 5 cards; all 7 disclosure variants still counted.
+    m = re.search(r"<td>2025</td><td>(\d+)</td><td>(\d+)</td>", r.text)
+    assert m, "2025 row missing from the By-season table"
+    assert m.group(1) == "5"
+    assert m.group(2) == "7"
 
 
 def test_about_page(env):

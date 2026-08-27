@@ -16,9 +16,16 @@ scraping. Everything here is built on three rules:
    or echoed.
 3. **Resumability.** One checkpoint row per (caselist, school, team) in
    ``sync_checkpoints``, written transactionally only after that unit
-   fully completes. On restart, completed units are skipped without a
-   single HTTP request. Every fetched JSON body and .docx lands in the
-   content-addressed raw store with a ``documents`` row before parsing.
+   fully completes. Checkpoints are scoped to a *run* (module-owned
+   ``sync_runs`` table, like hf_loader's hf_buckets): an unfinished run
+   for the same scope is resumed and its completed units are skipped
+   without a single HTTP request; a finished prior run is never resumed —
+   a new invocation re-processes every unit (ingest is idempotent and the
+   rate limiter keeps it polite), so weekly in-season syncs pick up new
+   rounds instead of freezing the corpus. Every fetched JSON body and
+   .docx lands in the content-addressed raw store with a ``documents``
+   row before parsing; a file path already fetched is served from that
+   store with zero HTTP forever (spec §0.2).
 
 Enumeration walk (client-side PF filter — the API has no server-side event
 filter): caselists → schools → teams → rounds (+ per-round open-source
@@ -51,6 +58,7 @@ from .ingest import (CardRecord, IngestStats, attach_variant,
                      get_or_create_caselist, get_or_create_round,
                      get_or_create_school, get_or_create_team, insert_card,
                      ledger_stamp)
+from .keys import sha256_bytes
 from .ratelimit import RateLimiter, SyncError, request_with_backoff
 from .rawstore import now_iso, record_document, store_bytes
 
@@ -368,9 +376,12 @@ def _is_pf(row: Dict[str, Any]) -> bool:
     event = str(row.get("event") or "").strip().lower()
     if event:
         return event in _PF_EVENTS
-    # no event field: fall back to slug/name convention (hspf<yy>)
+    # no event field: fall back to slug/name convention. PF slugs embed
+    # "pf" at the end of the letter run (hspf25, mspf24, pf24), so accept
+    # "pf" followed by a non-letter or end-of-string; ndtceda/nfald/
+    # hspolicy/hsld never contain that shape.
     blob = ("%s %s" % (row.get("slug", ""), row.get("name", ""))).lower()
-    return bool(re.search(r"(?:^|[^a-z])pf", blob))
+    return bool(re.search(r"pf(?=[^a-z]|$)", blob))
 
 
 def _since_year(since: Optional[str]) -> Optional[int]:
@@ -437,6 +448,32 @@ def _login(conn, client, limiter, max_retries, api_base, endpoints, cfg) -> None
         client.cookies.set(cookie_name, token)
 
 
+# Module-owned bookkeeping (like hf_loader's hf_buckets): one row per sync
+# run. Checkpoints only ever skip units inside an *unfinished* run — a
+# finished run is history, never a reason to skip (spec §2.2 checkpoints
+# exist so a crash resumes instead of re-requesting, not so a completed
+# season is frozen).
+SYNC_RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id INTEGER PRIMARY KEY,
+  scope TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT
+)
+"""
+
+
+def _run_scope(caselist: Optional[str], since: Optional[str]) -> str:
+    return "%s|%s" % (caselist or "*", since or "*")
+
+
+def _open_run_id(conn, scope: str) -> Optional[int]:
+    row = conn.execute(
+        "SELECT id FROM sync_runs WHERE scope = ? AND finished_at IS NULL "
+        "ORDER BY id DESC LIMIT 1", (scope,)).fetchone()
+    return row["id"] if row else None
+
+
 def _checkpoint_state(conn, caselist: str, school: str, team: str
                       ) -> Optional[str]:
     row = conn.execute(
@@ -466,6 +503,13 @@ def sync(conn: sqlite3.Connection, cfg: Dict[str, Any],
     a "unit" is one (caselist, school, team): ``units_seen`` counts every
     team encountered, ``units_skipped`` the ones resumed past via
     checkpoint (zero HTTP requests issued for those).
+
+    Checkpoints are run-scoped: an unfinished ``sync_runs`` row for the
+    same (caselist, since) scope is resumed, so a crash-restart skips its
+    completed units; a finished prior run is never resumed — a fresh run
+    invalidates the target checkpoints and re-processes every unit (ingest
+    is idempotent, so re-processing adds nothing already known, and cached
+    blobs mean known files cost zero HTTP).
     """
     sync_cfg = cfg.get("sync") or {}
     endpoints = load_endpoints(cfg)
@@ -477,6 +521,12 @@ def sync(conn: sqlite3.Connection, cfg: Dict[str, Any],
         limiter = RateLimiter(float(sync_cfg.get("rate_limit_rps", 1.0)))
     raw_root = resolve_path(cfg, "raw_store")
     stats = IngestStats()
+
+    conn.execute(SYNC_RUNS_DDL)
+    conn.commit()
+    scope = _run_scope(caselist, since)
+    run_id = _open_run_id(conn, scope)
+    resumed = run_id is not None
 
     owns_client = client is None
     if owns_client:
@@ -507,9 +557,32 @@ def sync(conn: sqlite3.Connection, cfg: Dict[str, Any],
             targets = [r for r in targets
                        if r.get("year") is None or int(r["year"]) >= year_floor]
 
+        if not resumed:
+            # New run (no unfinished run for this scope): the previous
+            # run's checkpoints are history, not skip permits — invalidate
+            # them in the same commit that opens the run, so every unit is
+            # re-processed and newly-disclosed rounds are picked up.
+            slugs = [str(r.get("slug") or r.get("name")) for r in targets]
+            if slugs:
+                conn.execute(
+                    "DELETE FROM sync_checkpoints WHERE caselist IN (%s)"
+                    % ",".join("?" * len(slugs)), slugs)
+            cur = conn.execute(
+                "INSERT INTO sync_runs (scope, started_at) VALUES (?, ?)",
+                (scope, now_iso()))
+            run_id = cur.lastrowid
+            conn.commit()
+        log.info("sync run %s (scope %s) %s", run_id, scope,
+                 "resumed" if resumed else "started")
+
         for row in targets:
             _sync_caselist(conn, client, limiter, max_retries, api_base,
                            endpoints, raw_root, row, stats)
+        # clean completion: close this run (and any stray open runs of the
+        # same scope) so the next invocation starts fresh
+        conn.execute(
+            "UPDATE sync_runs SET finished_at = ? "
+            "WHERE scope = ? AND finished_at IS NULL", (now_iso(), scope))
         conn.commit()
     finally:
         if owns_client:
@@ -614,7 +687,7 @@ def _sync_team(conn, client, limiter, max_retries, api_base, endpoints,
     _store_blob(conn, raw_root, blob, final_url)
     rounds = rounds if isinstance(rounds, list) else []
 
-    fallback: List[Tuple[Any, int]] = []   # (api round id, rounds.id)
+    fallback: List[Tuple[Any, int, str]] = []  # (api rid, rounds.id, ext id)
     n_docs = 0
     for r in rounds:
         rid = r.get("round_id", r.get("id"))
@@ -635,55 +708,132 @@ def _sync_team(conn, client, limiter, max_retries, api_base, endpoints,
         if opensource:
             got_doc = _sync_opensource(conn, client, limiter, max_retries,
                                        api_base, endpoints, raw_root,
-                                       opensource, round_db_id, stats,
+                                       opensource, round_db_id, ext, stats,
                                        touched)
             n_docs += int(got_doc)
         if not got_doc:
-            fallback.append((rid, round_db_id))
+            fallback.append((rid, round_db_id, ext))
 
     if fallback:
         # pasted cites: fetched lazily, only when some round has no usable
         # open-source doc (spec §2.2 — cites are the lossy fallback record)
         curl = _url(api_base, endpoints, "cites", args)
         cites, blob, final_url = _get_json(client, limiter, max_retries, curl)
-        cites_sha, cites_doc_id = _store_blob(conn, raw_root, blob, final_url)
+        # raw listing blob kept for provenance (spec §2.3) — but variants
+        # never attach to it: its sha changes whenever the listing changes,
+        # which would mint a fresh documents row and defeat
+        # UNIQUE(document_id, ordinal) dedup across runs.
+        blob_sha, blob_path = store_bytes(raw_root, blob)
+        record_document(conn, blob_sha, "api", final_url, None,
+                        str(blob_path))
         by_round: Dict[Any, List[Tuple[int, dict]]] = {}
         for idx, c in enumerate(cites if isinstance(cites, list) else []):
             by_round.setdefault(c.get("round_id"), []).append((idx, c))
-        for rid, round_db_id in fallback:
-            for idx, c in by_round.get(rid, []):
-                _ingest_cite(conn, c, idx, cites_doc_id, cites_sha,
-                             round_db_id, stats, touched)
+        for rid, round_db_id, round_ext in fallback:
+            entries = by_round.get(rid, [])
+            if not entries:
+                continue
+            # stable synthetic document identity per round (precedent: the
+            # HF loader's synthetic doc shas), so a re-fetched listing
+            # attaches to the SAME documents row and old cites dedup
+            doc_sha = sha256_bytes(
+                ("api:cites:round:%s" % round_ext).encode("utf-8"))
+            cites_doc_id = record_document(conn, doc_sha, "api", final_url,
+                                           None, str(blob_path))
+            for idx, c in entries:
+                _ingest_cite(conn, c, idx, cites_doc_id, round_db_id,
+                             stats, touched)
 
     log.info("unit %s/%s/%s: rounds=%d opensource_docs=%d cites_fallback=%d",
              cl_slug, school_name, tname, len(rounds), n_docs, len(fallback))
     return touched
 
 
+def _path_cached_sha(conn, raw_root: Path, opensource: str
+                     ) -> Optional[Tuple[str, Path]]:
+    """(sha, local path) of an already-fetched opensource file, else None.
+
+    The ledger maps each fetched file *path* to the sha of its bytes;
+    together with the content-addressed raw store this makes a re-linked
+    or re-processed file cost zero HTTP (spec §0.2: cache every response
+    to disk forever)."""
+    row = conn.execute(
+        "SELECT sha256 FROM ingest_ledger "
+        "WHERE source = 'api' AND external_id = ?",
+        ("path:%s" % opensource,)).fetchone()
+    if not row or not row["sha256"]:
+        return None
+    sha = row["sha256"]
+    local = raw_root / sha[:2] / sha
+    if not local.exists():
+        return None  # blob vanished from disk: re-download
+    return sha, local
+
+
+def _convert_doc_bytes(data: bytes, filename: str) -> bytes:
+    """Legacy .doc bytes -> .docx bytes via docx_parser.convert_doc_to_docx
+    (spec §3.4). Raises ParseFailure when LibreOffice is unavailable or the
+    conversion fails."""
+    import shutil
+    import tempfile
+
+    from . import docx_parser
+    tmpdir = Path(tempfile.mkdtemp(prefix="carddb-sync-doc-"))
+    try:
+        src = tmpdir / (posixpath.basename(filename) or "legacy.doc")
+        src.write_bytes(data)
+        converted = docx_parser.convert_doc_to_docx(src)
+        return Path(converted).read_bytes()
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _sync_opensource(conn, client, limiter, max_retries, api_base, endpoints,
                      raw_root, opensource: str, round_db_id: int,
-                     stats: IngestStats, touched: Set[int]) -> bool:
-    """Download + parse one round's open-source file.
+                     round_ext: str, stats: IngestStats,
+                     touched: Set[int]) -> bool:
+    """Fetch (or reuse) + parse one round's open-source file.
+
+    Spec §4.1's "parsed once" is about never re-DOWNLOADING: the blob is
+    stored once by its real sha, but provenance still attaches per round —
+    the documents row is per (round, file sha) via a namespaced synthetic
+    sha, so a byte-identical file disclosed by a second round still gets
+    that round's variants (parsed from the local cached blob, zero HTTP).
 
     Returns True when the round has a stored doc (even if parsing failed —
     the cites fallback is only for rounds with *no* open-source doc, spec
     §2.2); False when the file could not be fetched (then the caller falls
     back to cites)."""
+    fname = posixpath.basename(opensource)
     url = _url(api_base, endpoints, "download")
-    resp = request_with_backoff(client, "GET", url, limiter=limiter,
-                                max_retries=max_retries,
-                                params={"path": opensource})
-    if resp.status_code != 200:
-        log.warning("download %s -> HTTP %d; treating round as no-doc",
-                    opensource, resp.status_code)
-        return False
-    data = resp.content
-    sha, local = store_bytes(raw_root, data)
-    doc_id = record_document(conn, sha, "api", str(resp.request.url),
-                             posixpath.basename(opensource), str(local))
-    ledger_key = "docx:%s" % sha
-    # idempotence layer 1 (spec §4.1): the same file uploaded to five
-    # rounds is parsed once; documents/ledger short-circuit the rest
+    data: Optional[bytes] = None
+    cached = _path_cached_sha(conn, raw_root, opensource)
+    if cached is not None:
+        sha, local = cached
+        origin_url = "%s?path=%s" % (url, quote(opensource, safe=""))
+    else:
+        resp = request_with_backoff(client, "GET", url, limiter=limiter,
+                                    max_retries=max_retries,
+                                    params={"path": opensource})
+        if resp.status_code != 200:
+            log.warning("download %s -> HTTP %d; treating round as no-doc",
+                        opensource, resp.status_code)
+            return False
+        data = resp.content
+        sha, local = store_bytes(raw_root, data)
+        origin_url = str(resp.request.url)
+        # provenance row for the fetched bytes themselves (spec §2.3)
+        record_document(conn, sha, "api", origin_url, fname, str(local))
+        ledger_stamp(conn, "api", "path:%s" % opensource, sha)
+
+    # documents row per (round, file sha): namespaced synthetic identity
+    # (precedent: the HF loader's synthetic doc shas), local_path pointing
+    # at the shared content-addressed blob
+    doc_sha = sha256_bytes(
+        ("api:doc:%s:%s" % (round_ext, sha)).encode("utf-8"))
+    doc_id = record_document(conn, doc_sha, "api", origin_url, fname,
+                             str(local))
+    ledger_key = "docx:%s:%s" % (round_ext, sha)
     if ledger_seen(conn, "api", ledger_key, sha):
         return True
     prev = conn.execute("SELECT parse_status FROM documents WHERE id = ?",
@@ -692,10 +842,17 @@ def _sync_opensource(conn, client, limiter, max_retries, api_base, endpoints,
         ledger_stamp(conn, "api", ledger_key, sha)
         return True
 
+    if data is None:
+        data = local.read_bytes()   # re-parse from the raw store, no HTTP
+
     # local import so ratelimit/discovery tests never need python-docx
     from .docx_parser import ParseFailure, parse_docx_bytes
     try:
-        parsed = parse_docx_bytes(data, filename=posixpath.basename(opensource))
+        if fname.lower().endswith(".doc"):
+            # legacy Word binary: convert via soffice, then parse the
+            # converted bytes (spec §3.4)
+            data = _convert_doc_bytes(data, fname)
+        parsed = parse_docx_bytes(data, filename=fname)
     except ParseFailure as e:
         conn.execute(
             "UPDATE documents SET parse_status='failed', parse_error=?, "
@@ -718,18 +875,30 @@ def _sync_opensource(conn, client, limiter, max_retries, api_base, endpoints,
     return True
 
 
-def _ingest_cite(conn, cite_row: Dict[str, Any], ordinal: int,
-                 cites_doc_id: int, cites_sha: str, round_db_id: int,
+def _ingest_cite(conn, cite_row: Dict[str, Any], listing_idx: int,
+                 cites_doc_id: int, round_db_id: int,
                  stats: IngestStats, touched: Set[int]) -> None:
-    """One pasted-cites entry -> fidelity='cites_only' record (spec §2.2)."""
+    """One pasted-cites entry -> fidelity='cites_only' record (spec §2.2).
+
+    The variant's home is the round's *synthetic* cites document and its
+    ordinal is the cite entry's stable id, so a re-fetched listing (which
+    has a new blob sha) attaches to the same (document_id, ordinal) and
+    dedups on the UNIQUE constraint. The ledger sha is the entry's own
+    canonical JSON: an unchanged entry skips, a changed one reprocesses."""
     cid = cite_row.get("cite_id")
     ext = "cite-%s" % cid if cid is not None else None
-    if ext and ledger_seen(conn, "api", ext, cites_sha):
+    entry_sha = sha256_bytes(
+        json.dumps(cite_row, sort_keys=True, ensure_ascii=False,
+                   default=str).encode("utf-8"))
+    if ext and ledger_seen(conn, "api", ext, entry_sha):
         return
     title = str(cite_row.get("title") or "").strip() or None
     text = str(cite_row.get("cites") or "").strip() or None
     if not title and not text:
         return
+    # stable ordinal: the cite id itself; id-less entries fall back to a
+    # negative listing position so they can never collide with real ids
+    ordinal = cid if cid is not None else -(listing_idx + 1)
     rec = CardRecord(tag=title, body_text=text,
                      is_analytic=text is None,  # title-only paste: key on tag
                      fidelity="cites_only", ordinal=ordinal, external_id=ext)
@@ -740,4 +909,4 @@ def _ingest_cite(conn, cite_row: Dict[str, Any], ordinal: int,
     stats.new_variants += int(vcreated)
     touched.add(card_id)
     if ext:
-        ledger_stamp(conn, "api", ext, cites_sha)
+        ledger_stamp(conn, "api", ext, entry_sha)

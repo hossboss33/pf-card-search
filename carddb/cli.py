@@ -14,7 +14,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -36,25 +35,46 @@ def cmd_ingest(args, cfg):
         ingest_hf(conn, cfg, stats, limit=args.limit)
     elif args.source == "api":
         from .api_sync import sync
-        sync(conn, cfg, caselist=args.caselist, since=args.since)
+        stats = sync(conn, cfg, caselist=args.caselist, since=args.since)
     elif args.source == "private":
-        from .docx_parser import ParseFailure, parse_docx
-        from .ingest import attach_variant, finish_batch, insert_card
+        from .db import ledger_seen
+        from .docx_parser import ParseFailure, convert_doc_to_docx, parse_docx
+        from .ingest import attach_variant, finish_batch, insert_card, ledger_stamp
         from .rawstore import now_iso, record_document, store_bytes
         raw_root = resolve_path(cfg, "raw_store")
         for p in args.paths:
+            # Parser failures never abort a batch (spec §3.4): every per-file
+            # problem — unreadable path included — is recorded and skipped.
             path = Path(p)
-            data = path.read_bytes()
-            sha, local = store_bytes(raw_root, data)
-            doc_id = record_document(conn, sha, "private", None, path.name, str(local))
             stats.units_seen += 1
             try:
+                data = path.read_bytes()
+            except OSError as e:
+                print(f"[ingest] cannot read {path}: {e}", file=sys.stderr)
+                stats.failed += 1
+                continue
+            sha, local = store_bytes(raw_root, data)
+            if ledger_seen(conn, "private", sha, sha):
+                stats.units_skipped += 1
+                continue
+            doc_id = record_document(conn, sha, "private", None, path.name, str(local))
+            try:
+                if path.suffix.lower() == ".doc":
+                    path = convert_doc_to_docx(path)  # legacy .doc via soffice (§3.4)
                 parsed = parse_docx(path)
             except ParseFailure as e:
                 conn.execute(
                     "UPDATE documents SET parse_status='failed', parse_error=?, parsed_at=? WHERE id=?",
                     (str(e), now_iso(), doc_id))
                 stats.failed += 1
+                conn.commit()
+                continue
+            except Exception as e:  # never lose the batch to one bad file
+                conn.execute(
+                    "UPDATE documents SET parse_status='failed', parse_error=?, parsed_at=? WHERE id=?",
+                    (f"{type(e).__name__}: {e}", now_iso(), doc_id))
+                stats.failed += 1
+                conn.commit()
                 continue
             for rec in parsed.cards:
                 rec.fidelity = "private"
@@ -66,7 +86,9 @@ def cmd_ingest(args, cfg):
             conn.execute(
                 "UPDATE documents SET parse_status='ok', parsed_at=? WHERE id=?",
                 (now_iso(), doc_id))
+            ledger_stamp(conn, "private", sha, sha)
             stats.parsed += 1
+            conn.commit()  # progress survives a later crash
         finish_batch(conn, stats)
     else:
         print(f"unknown source: {args.source}", file=sys.stderr)
@@ -150,6 +172,17 @@ def cmd_stats(args, cfg):
     return 0
 
 
+def cmd_reindex(args, cfg):
+    """Repair path: rebuild every FTS row and derived aggregate from the
+    tables of record (e.g. after an interrupted bulk load)."""
+    from .db import fts_rebuild, recompute_aggregates
+    conn = _conn(cfg)
+    n = fts_rebuild(conn)
+    recompute_aggregates(conn)
+    print(f"reindexed {n} cards")
+    return 0
+
+
 def cmd_backup(args, cfg):
     src = resolve_path(cfg, "db")
     if not src.exists():
@@ -158,7 +191,11 @@ def cmd_backup(args, cfg):
     bdir = resolve_path(cfg, "backups")
     bdir.mkdir(parents=True, exist_ok=True)
     dest = bdir / f"{date.today().isoformat()}.sqlite"
-    shutil.copy2(src, dest)
+    # The DB runs in WAL mode; a filesystem copy can miss the WAL or catch a
+    # moving checkpoint. sqlite's online backup API is the safe path.
+    import sqlite3
+    with sqlite3.connect(str(src)) as sconn, sqlite3.connect(str(dest)) as dconn:
+        sconn.backup(dconn)
     backups = sorted(bdir.glob("*.sqlite"))
     for old in backups[:-8]:  # keep 8 (spec §10)
         old.unlink()
@@ -209,10 +246,15 @@ def main(argv=None):
     p = sub.add_parser("stats")
     p.set_defaults(fn=cmd_stats)
 
+    p = sub.add_parser("reindex")
+    p.set_defaults(fn=cmd_reindex)
+
     p = sub.add_parser("backup")
     p.set_defaults(fn=cmd_backup)
 
     args = ap.parse_args(argv)
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     cfg = load_config()
     started = datetime.now()
     rc = args.fn(args, cfg)

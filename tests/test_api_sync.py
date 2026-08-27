@@ -19,16 +19,18 @@ import httpx
 import pytest
 import tomli
 
-from carddb.api_sync import (build_user_agent, discover_endpoints, sync)
+from carddb.api_sync import (_is_pf, build_user_agent, discover_endpoints,
+                             sync)
 from carddb.db import open_db
 from carddb.ratelimit import (RateLimiter, SyncError, parse_retry_after,
                               request_with_backoff)
-from fixtures.docx_builders import build_loose_pf, docx_bytes
+from fixtures.docx_builders import build_loose_pf, build_verbatim, docx_bytes
 
 ROOT = Path(__file__).resolve().parent.parent
 ENDPOINTS_SRC = ROOT / "config" / "endpoints.toml"
 
 LOOSE_PF_BYTES = docx_bytes(build_loose_pf())   # parses to 2 evidence cards
+VERBATIM_BYTES = docx_bytes(build_verbatim())   # parses to 3 cards
 
 
 # ---------------------------------------------------------------------------
@@ -432,9 +434,14 @@ class MockAPI:
     """Scripted openCaselist. Records every request; optionally raises
     mid-run to simulate a crash."""
 
-    def __init__(self, crash_on=None, downloads=None):
+    def __init__(self, crash_on=None, downloads=None, rounds=None,
+                 cites=None, caselists=None):
         self.crash_on = crash_on
         self.downloads = DOWNLOADS if downloads is None else downloads
+        self.rounds = ROUNDS if rounds is None else rounds
+        self.cites = CITES if cites is None else cites
+        self.caselists = ([PF_CASELIST, CX_CASELIST] if caselists is None
+                          else caselists)
         self.log = []
 
     # -- helpers used by tests ------------------------------------------
@@ -473,7 +480,7 @@ class MockAPI:
         if path == "/v1/caselists":
             if params.get("archived") == "true":
                 return httpx.Response(200, json=[])
-            return httpx.Response(200, json=[PF_CASELIST, CX_CASELIST])
+            return httpx.Response(200, json=self.caselists)
         if path == "/v1/caselists/hspf25/schools":
             return httpx.Response(200, json=SCHOOLS)
         m = re.match(r"^/v1/caselists/hspf25/schools/([^/]+)/teams$", path)
@@ -482,11 +489,11 @@ class MockAPI:
         m = re.match(
             r"^/v1/caselists/hspf25/schools/[^/]+/teams/([^/]+)/rounds$", path)
         if m:
-            return httpx.Response(200, json=ROUNDS.get(m.group(1), []))
+            return httpx.Response(200, json=self.rounds.get(m.group(1), []))
         m = re.match(
             r"^/v1/caselists/hspf25/schools/[^/]+/teams/([^/]+)/cites$", path)
         if m:
-            return httpx.Response(200, json=CITES.get(m.group(1), []))
+            return httpx.Response(200, json=self.cites.get(m.group(1), []))
         if path == "/v1/download":
             fp = params.get("path")
             if fp in self.downloads:
@@ -551,15 +558,17 @@ def test_full_sync_end_to_end(tmp_path, creds):
     # units: NoAB, MiCD, MiEF
     assert st.units_seen == 3
     assert st.units_skipped == 0
-    # one unique docx parsed once (MiEF's file is byte-identical -> layer-1
-    # sha dedup short-circuits the second parse)
-    assert st.parsed == 1
+    # the blob is stored once, but provenance attaches per round: MiEF's
+    # byte-identical file is parsed for ITS round too (from the shared
+    # blob), so both rounds carry variants (A3)
+    assert st.parsed == 2
     assert st.failed == 0
-    # 2 cards from the docx + 1 cites-only fallback card
+    # 2 canonical cards from the docx + 1 cites-only fallback card; the
+    # docx cards each carry a variant per disclosing round
     assert st.new_cards == 3
-    assert st.new_variants == 3
+    assert st.new_variants == 5
     c = counts(conn)
-    assert c["cards"] == 3 and c["variants"] == 3 and c["fts"] == 3
+    assert c["cards"] == 3 and c["variants"] == 5 and c["fts"] == 3
 
     # sides normalized at ingest: A -> P, N -> C (spec §1.4)
     sides = {r["external_id"]: r["side"]
@@ -569,7 +578,17 @@ def test_full_sync_end_to_end(tmp_path, creds):
     # fidelity: the no-doc round's cites came in as cites_only
     fids = sorted(r["fidelity"] for r in
                   conn.execute("SELECT fidelity FROM card_variants"))
-    assert fids == ["cites_only", "opensource", "opensource"]
+    assert fids == ["cites_only"] + ["opensource"] * 4
+    # both disclosing rounds have opensource variants; team_count sees both
+    for ext in ("api-101", "api-103"):
+        n = conn.execute(
+            "SELECT COUNT(*) FROM card_variants v JOIN rounds r "
+            "ON r.id = v.round_id WHERE r.external_id = ?", (ext,)
+        ).fetchone()[0]
+        assert n == 2, ext
+    tc = {r["tag"]: r["team_count"] for r in conn.execute(
+        "SELECT tag, team_count FROM cards WHERE is_analytic = 0")}
+    assert tc["Fracking bans spike energy prices"] == 2
     cites_var = conn.execute(
         "SELECT v.round_id, c.tag FROM card_variants v "
         "JOIN cards c ON c.id = v.card_id "
@@ -603,22 +622,34 @@ def test_full_sync_end_to_end(tmp_path, creds):
     data_requests = [e for e in api.log if e["path"] != "/v1/login"]
     assert all("caselist_token=tok123" in e["cookie"] for e in data_requests)
 
-    # raw store: every documents row points at a real file, origin='api'
+    # raw store: every documents row is origin='api' and every local_path
+    # points at a real content-addressed blob
     docs = conn.execute(
         "SELECT origin, local_path, sha256 FROM documents").fetchall()
     assert docs and all(d["origin"] == "api" for d in docs)
     for d in docs:
-        p = Path(d["local_path"])
-        assert p.exists()
-        assert p.name == d["sha256"] and p.parent.name == d["sha256"][:2]
-    # the docx blob is among them exactly once (content-addressed)
+        assert d["local_path"] is not None
+        assert Path(d["local_path"]).exists()
+    # the docx blob's own provenance row exists exactly once
+    # (content-addressed by its real sha)
     from carddb.keys import sha256_bytes
     docx_sha = sha256_bytes(LOOSE_PF_BYTES)
-    assert conn.execute("SELECT COUNT(*) FROM documents WHERE sha256 = ?",
-                        (docx_sha,)).fetchone()[0] == 1
-    assert conn.execute(
-        "SELECT parse_status FROM documents WHERE sha256 = ?",
-        (docx_sha,)).fetchone()["parse_status"] == "ok"
+    raw = conn.execute("SELECT * FROM documents WHERE sha256 = ?",
+                       (docx_sha,)).fetchall()
+    assert len(raw) == 1
+    blob = Path(raw[0]["local_path"])
+    assert blob.exists()
+    assert blob.name == docx_sha and blob.parent.name == docx_sha[:2]
+    # per-round synthetic doc rows share that blob and carry parse status
+    for ext in ("api-101", "api-103"):
+        synth_sha = sha256_bytes(
+            ("api:doc:%s:%s" % (ext, docx_sha)).encode("utf-8"))
+        row = conn.execute(
+            "SELECT parse_status, local_path FROM documents WHERE sha256=?",
+            (synth_sha,)).fetchone()
+        assert row is not None, ext
+        assert row["parse_status"] == "ok"
+        assert row["local_path"] == str(blob)
 
     # FTS actually searches the synced cards
     hit = conn.execute(
@@ -649,7 +680,8 @@ def test_crash_resume_skips_completed_units_without_requests(tmp_path, creds):
     assert before["cards"] == 3          # units 1+2 landed and committed
     assert before["rounds"] == 2         # unit 3's round was rolled back
 
-    # run 2: resume. Completed units must issue ZERO HTTP requests.
+    # run 2: resume (the crashed run is unfinished). Completed units must
+    # issue ZERO HTTP requests.
     api2 = MockAPI()
     st2 = run_sync(conn, cfg, api2)
     assert st2.units_seen == 3
@@ -661,26 +693,39 @@ def test_crash_resume_skips_completed_units_without_requests(tmp_path, creds):
     cps = {(r["caselist"], r["school"], r["team"]): r["state"]
            for r in conn.execute("SELECT * FROM sync_checkpoints")}
     assert cps[("hspf25", "Millburn", "MiEF")] == "done"
-    # MiEF's file is byte-identical to NoAB's -> no new cards or variants,
-    # but its round (rolled back in run 1) now exists
-    assert st2.new_cards == 0 and st2.new_variants == 0
-    after_resume = dict(before, rounds=3)
+    # MiEF's file is byte-identical to NoAB's -> no new canonical cards,
+    # but its round (rolled back in run 1) now exists and carries its own
+    # variants (provenance per round, A3)
+    assert st2.new_cards == 0 and st2.new_variants == 2
+    after_resume = dict(before, rounds=3, variants=5)
     assert counts(conn) == after_resume
 
-    # run 3: fully synced. Every unit skips; zero unit-level requests.
+    # run 3: the prior run COMPLETED, so it is NOT resumed — a new run
+    # re-processes every unit (that is how weekly syncs pick up new
+    # rounds) but ingests nothing new: listings are re-requested, known
+    # blobs come from the local cache with zero download requests.
     api3 = MockAPI()
     st3 = run_sync(conn, cfg, api3)
-    assert st3.units_seen == 3 and st3.units_skipped == 3
+    assert st3.units_seen == 3 and st3.units_skipped == 0
     assert st3.new_cards == 0 and st3.new_variants == 0
+    assert st3.parsed == 0
     paths3 = api3.paths()
-    assert not any(p.endswith("/rounds") or p.endswith("/cites")
-                   or p == "/v1/download" for p in paths3), paths3
-    # only login + enumeration listings remain
-    assert set(paths3) == {
-        "/v1/login", "/v1/caselists", "/v1/caselists/hspf25/schools",
-        "/v1/caselists/hspf25/schools/Northview/teams",
-        "/v1/caselists/hspf25/schools/Millburn/teams"}
+    assert any(p.endswith("/rounds") for p in paths3), paths3
+    # every previously fetched file is cached forever: no downloads
+    assert not any(p == "/v1/download" for p in paths3), paths3
     assert counts(conn) == after_resume
+    # checkpoints were rebuilt for the fresh run
+    cps = {(r["caselist"], r["school"], r["team"]): r["state"]
+           for r in conn.execute("SELECT * FROM sync_checkpoints")}
+    assert cps == {("hspf25", "Northview", "NoAB"): "done",
+                   ("hspf25", "Millburn", "MiCD"): "done",
+                   ("hspf25", "Millburn", "MiEF"): "done"}
+    # run bookkeeping: the crashed+resumed run is one finished row, run 3
+    # another; nothing left open
+    runs = conn.execute(
+        "SELECT scope, finished_at FROM sync_runs ORDER BY id").fetchall()
+    assert len(runs) == 2
+    assert all(r["finished_at"] for r in runs)
     conn.close()
 
 
@@ -777,4 +822,243 @@ def test_since_filters_out_older_seasons(tmp_path, creds):
     # hspf25 is the 2025 season -> filtered; nothing below caselists runs
     assert st.units_seen == 0
     assert not any("/schools" in p for p in api.paths())
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# A1 regression: a completed run is never resumed — weekly syncs pick up
+# rounds disclosed after the last completed run
+# ---------------------------------------------------------------------------
+
+def test_round_added_after_completed_run_is_picked_up(tmp_path, creds):
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    run_sync(conn, cfg, MockAPI())          # week 1: completes cleanly
+    before = counts(conn)
+
+    # week 2: NoAB disclosed a new round with a new open-source file
+    new_path = "hspf25/Northview/NoAB/round5.docx"
+    rounds2 = {k: list(v) for k, v in ROUNDS.items()}
+    rounds2["NoAB"] = rounds2["NoAB"] + [
+        {"round_id": 105, "side": "N", "tournament": "TOC", "round": "5",
+         "opponent": "Ames AB", "judge": "M. Diaz", "report": "",
+         "opensource": new_path, "tourn_id": 11, "external_id": None}]
+    downloads2 = dict(DOWNLOADS)
+    downloads2[new_path] = VERBATIM_BYTES
+    api2 = MockAPI(rounds=rounds2, downloads=downloads2)
+    st2 = run_sync(conn, cfg, api2)
+
+    # nothing was silently skipped: every unit re-processed
+    assert st2.units_seen == 3 and st2.units_skipped == 0
+    # the new round and its cards landed
+    assert conn.execute(
+        "SELECT COUNT(*) FROM rounds WHERE external_id = 'api-105'"
+    ).fetchone()[0] == 1
+    assert st2.new_cards == 3 and st2.new_variants == 3   # build_verbatim
+    after = counts(conn)
+    assert after["cards"] == before["cards"] + 3
+    assert after["variants"] == before["variants"] + 3
+    assert after["rounds"] == before["rounds"] + 1
+    # politeness: only the NEW file was downloaded; known paths came from
+    # the local cache
+    dls = [e["query"] for e in api2.log if e["path"] == "/v1/download"]
+    assert len(dls) == 1 and "round5" in dls[0], dls
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# A2 regression: cites-document identity is stable per round, so a changed
+# cites listing never re-mints old cites as duplicate variants
+# ---------------------------------------------------------------------------
+
+def test_cite_added_to_listing_does_not_duplicate_old_cites(tmp_path, creds):
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    run_sync(conn, cfg, MockAPI())
+    before = counts(conn)
+
+    # the team adds one more pasted cite -> the listing blob's sha changes
+    cites2 = {k: list(v) for k, v in CITES.items()}
+    cites2["MiCD"] = cites2["MiCD"] + [
+        {"cite_id": 901, "round_id": 102, "title": "New answer",
+         "cites": "# New answer\nFresh '26 - brand new cite text."}]
+    st2 = run_sync(conn, cfg, MockAPI(cites=cites2))
+
+    # the old cite gained no second variant
+    old = conn.execute(
+        "SELECT c.id FROM cards c WHERE c.tag = 'AT: Data centers good'"
+    ).fetchone()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM card_variants WHERE card_id = ?",
+        (old["id"],)).fetchone()[0] == 1
+    # the new cite appears exactly once
+    new = conn.execute(
+        "SELECT c.id FROM cards c WHERE c.tag = 'New answer'").fetchone()
+    assert new is not None
+    assert conn.execute(
+        "SELECT COUNT(*) FROM card_variants WHERE card_id = ?",
+        (new["id"],)).fetchone()[0] == 1
+    assert st2.new_cards == 1 and st2.new_variants == 1
+    after = counts(conn)
+    assert after["cards"] == before["cards"] + 1
+    assert after["variants"] == before["variants"] + 1
+
+    # and a third run with the same listing changes nothing at all
+    st3 = run_sync(conn, cfg, MockAPI(cites=cites2))
+    assert st3.new_cards == 0 and st3.new_variants == 0
+    assert counts(conn) == after
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# A3 regression: same bytes disclosed by two teams -> both rounds carry
+# variants, aggregates see both teams, the file downloads exactly once
+# ---------------------------------------------------------------------------
+
+def test_same_bytes_two_teams_both_rounds_get_variants(tmp_path, creds):
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    shared = "hspf25/shared/campfile.docx"   # same path, linked by 2 teams
+    rounds = {k: list(v) for k, v in ROUNDS.items()}
+    rounds["NoAB"] = [dict(rounds["NoAB"][0], opensource=shared)]
+    rounds["MiEF"] = [dict(rounds["MiEF"][0], opensource=shared)]
+    api = MockAPI(rounds=rounds, downloads={shared: LOOSE_PF_BYTES})
+    st = run_sync(conn, cfg, api)
+
+    # the file was downloaded exactly once; the second round parsed from
+    # the local cached blob with zero HTTP
+    assert len([e for e in api.log if e["path"] == "/v1/download"]) == 1
+    # both rounds carry the doc's variants
+    for ext in ("api-101", "api-103"):
+        n = conn.execute(
+            "SELECT COUNT(*) FROM card_variants v JOIN rounds r "
+            "ON r.id = v.round_id WHERE r.external_id = ? "
+            "AND v.fidelity = 'opensource'", (ext,)).fetchone()[0]
+        assert n == 2, ext
+    assert st.new_cards == 3          # 2 docx canonicals + MiCD's cite
+    assert st.new_variants == 5       # 2 + 2 + 1
+    # lineage/read-by aggregates count both disclosing teams
+    tcs = [r["team_count"] for r in conn.execute(
+        "SELECT c.team_count FROM cards c JOIN card_variants v "
+        "ON v.card_id = c.id WHERE v.fidelity = 'opensource' "
+        "GROUP BY c.id")]
+    assert tcs == [2, 2]
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# A4 regression: PF filter fallback for caselist rows WITHOUT an event field
+# ---------------------------------------------------------------------------
+
+def test_is_pf_fallback_accepts_pf_slugs_without_event():
+    # hspf25 was the reviewer's reproduction: 'pf' preceded by 's'
+    assert _is_pf({"slug": "hspf25", "name": "hspf25"})
+    assert _is_pf({"slug": "hspf24"})
+    assert _is_pf({"slug": "mspf24"})
+    assert _is_pf({"slug": "pf24"})
+    assert _is_pf({"name": "2025-26 HS PF"})
+    # non-PF events stay rejected
+    assert not _is_pf({"slug": "ndtceda25", "name": "ndtceda25"})
+    assert not _is_pf({"slug": "nfald24"})
+    assert not _is_pf({"slug": "hspolicy25"})
+    assert not _is_pf({"slug": "hsld25"})
+    assert not _is_pf({"slug": "opencaselist25"})
+    # an explicit event field still wins over the slug in both directions
+    assert _is_pf({"slug": "weird-slug", "event": "pf"})
+    assert not _is_pf({"slug": "hspf25", "event": "cx"})
+
+
+def test_sync_enumerates_pf_caselist_without_event_field(tmp_path, creds):
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    pf = {k: v for k, v in PF_CASELIST.items() if k != "event"}
+    cx = {k: v for k, v in CX_CASELIST.items() if k != "event"}
+    api = MockAPI(caselists=[pf, cx])
+    st = run_sync(conn, cfg, api)
+    # hspf25 was enumerated despite the missing event field...
+    assert st.units_seen == 3
+    # ...and the cx caselist still was not
+    assert not any("ndtceda25" in u for u in api.full_urls())
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Legacy .doc downloads go through convert_doc_to_docx (spec §3.4)
+# ---------------------------------------------------------------------------
+
+DOC_PATH = "hspf25/Northview/NoAB/case.doc"
+DOC_BYTES = b"\xd0\xcf\x11\xe0-legacy-doc-bytes"
+
+
+def _doc_only_api():
+    rounds = {"NoAB": [dict(ROUNDS["NoAB"][0], opensource=DOC_PATH)],
+              "MiCD": [], "MiEF": []}
+    cites = {"NoAB": [], "MiCD": [], "MiEF": []}
+    return MockAPI(rounds=rounds, cites=cites,
+                   downloads={DOC_PATH: DOC_BYTES})
+
+
+def test_doc_download_is_converted_then_parsed(tmp_path, creds, monkeypatch):
+    import carddb.docx_parser as docx_parser
+
+    seen = {}
+
+    def fake_convert(path):
+        p = Path(path)
+        seen["name"] = p.name
+        seen["bytes"] = p.read_bytes()
+        out = p.with_suffix(".docx")
+        out.write_bytes(LOOSE_PF_BYTES)
+        return out
+
+    monkeypatch.setattr(docx_parser, "convert_doc_to_docx", fake_convert)
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    api = _doc_only_api()
+    st = run_sync(conn, cfg, api)
+
+    # the converter got the downloaded bytes as a real .doc file on disk
+    assert seen["name"] == "case.doc"
+    assert seen["bytes"] == DOC_BYTES
+    # the converted bytes parsed into cards attached to the round
+    assert st.parsed == 1 and st.failed == 0
+    assert st.new_cards == 2 and st.new_variants == 2
+    n = conn.execute(
+        "SELECT COUNT(*) FROM card_variants v JOIN rounds r "
+        "ON r.id = v.round_id WHERE r.external_id = 'api-101'"
+    ).fetchone()[0]
+    assert n == 2
+    conn.close()
+
+
+def test_doc_conversion_failure_records_parse_failed(tmp_path, creds,
+                                                     monkeypatch):
+    import carddb.docx_parser as docx_parser
+    from carddb.docx_parser import ParseFailure
+
+    def broken_convert(path):
+        raise ParseFailure("soffice (LibreOffice) not available; cannot "
+                           "convert %s" % Path(path).name)
+
+    monkeypatch.setattr(docx_parser, "convert_doc_to_docx", broken_convert)
+    cfg = make_cfg(tmp_path)
+    conn = open_db(cfg["paths"]["db"])
+    api = _doc_only_api()
+    st = run_sync(conn, cfg, api)
+
+    # recorded exactly as any parse failure: parse_status='failed', the
+    # round still counts as having a doc (no cites fallback fetch)
+    assert st.failed == 1 and st.parsed == 0
+    assert st.new_cards == 0 and st.new_variants == 0
+    row = conn.execute(
+        "SELECT parse_status, parse_error FROM documents "
+        "WHERE parse_status IS NOT NULL").fetchone()
+    assert row is not None
+    assert row["parse_status"] == "failed"
+    assert "soffice" in row["parse_error"]
+    assert not any(p.endswith("/cites") for p in api.paths())
+    # the unit still checkpoints as done
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sync_checkpoints WHERE state = 'done'"
+    ).fetchone()[0] == 3
     conn.close()

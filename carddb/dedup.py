@@ -13,9 +13,11 @@ normalize(body_text), bucketed by LSH with bands b=8, rows r=16
      share long boilerplate) and the author token sets overlap.
 
 Merging repoints card_variants at the survivor, records the merge in
-card_merges (reversible: the absorbed canonical_key is kept), moves
-hf_buckets rows when that table exists, deletes the absorbed cards row
-and its card_fts row, then refreshes FTS + aggregates for survivors.
+card_merges (reversible: the absorbed canonical_key is kept; older rows
+whose survivor is now absorbed are path-compressed to the new survivor),
+moves hf_buckets rows when that table exists, moves box memberships and
+cite-health onto the survivor, deletes the absorbed cards row and its
+card_fts row, then refreshes FTS + aggregates + topic_ids for survivors.
 Re-running after convergence merges nothing: absorbed cards are gone
 and surviving pairs all failed verification.
 
@@ -164,11 +166,41 @@ def _merge(conn: sqlite3.Connection, survivor_id: int, absorbed_id: int,
         "VALUES (?,?,?,?)",
         (survivor_id, absorbed_key, relation, now_iso()),
     )
+    # Path compression: earlier merges that pointed at the card we are now
+    # absorbing must be repointed at the new survivor, so every absorbed_key
+    # in card_merges always resolves to a LIVE card in one hop (ingest
+    # consults this table to keep absorbed keys from resurrecting).
+    conn.execute(
+        "UPDATE card_merges SET survivor_id = ? WHERE survivor_id = ?",
+        (survivor_id, absorbed_id),
+    )
     if move_hf:
+        # The survivor may already hold the same bucket_id (the routine
+        # agreement case); idx_hf_buckets(card_id, bucket_id) is UNIQUE, so
+        # repoint what we can and drop the now-duplicate leftovers.
         conn.execute(
-            "UPDATE hf_buckets SET card_id = ? WHERE card_id = ?",
+            "UPDATE OR IGNORE hf_buckets SET card_id = ? WHERE card_id = ?",
             (survivor_id, absorbed_id),
         )
+        conn.execute("DELETE FROM hf_buckets WHERE card_id = ?", (absorbed_id,))
+    # Rows referencing the absorbed card (FK to cards.id) move to the
+    # survivor before the DELETE, or PRAGMA foreign_keys=ON rejects it.
+    # Box memberships: keep one membership per (box, card).
+    conn.execute(
+        "INSERT OR IGNORE INTO card_box_members (box_id, card_id, note, added_at) "
+        "SELECT box_id, ?, note, added_at FROM card_box_members WHERE card_id = ?",
+        (survivor_id, absorbed_id),
+    )
+    conn.execute(
+        "DELETE FROM card_box_members WHERE card_id = ?", (absorbed_id,)
+    )
+    # Cite health (PRIMARY KEY card_id): keep the survivor's own row when it
+    # has one, otherwise inherit the absorbed card's latest check.
+    conn.execute(
+        "UPDATE OR IGNORE cite_health SET card_id = ? WHERE card_id = ?",
+        (survivor_id, absorbed_id),
+    )
+    conn.execute("DELETE FROM cite_health WHERE card_id = ?", (absorbed_id,))
     conn.execute("DELETE FROM cards WHERE id = ?", (absorbed_id,))
     conn.execute("DELETE FROM card_fts WHERE rowid = ?", (absorbed_id,))
 
@@ -270,6 +302,13 @@ def run_dedup(conn: sqlite3.Connection, report_dir: Path, seed: int = 0) -> Dedu
         final_survivors = {find(s) for s, _, _ in merge_events}
         fts_upsert_cards(conn, final_survivors)
         recompute_aggregates(conn, final_survivors)
+        # Survivors inherited variants (and thus rounds/topics) from the
+        # cards they absorbed; refresh their materialized topic_ids now
+        # rather than waiting for the next `carddb topics assign`. Lazy
+        # import keeps dedup free of a topics dependency at module load.
+        if _table_exists(conn, "topics"):
+            from .topics import materialize_topic_ids
+            materialize_topic_ids(conn, final_survivors)
     conn.commit()
 
     # Disagreement report (spec §4.3 cross-check), only when the HF

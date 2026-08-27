@@ -33,7 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
 
-from .a2 import a2_target, argument_key
+from .a2 import a2_display, a2_target, argument_key
 from .config import ROOT, load_config, resolve_path
 from .db import open_db
 from .rawstore import now_iso
@@ -547,7 +547,15 @@ def create_app(db_path=None, cfg: Optional[dict] = None) -> FastAPI:
                 if row["id"] not in seen_answer_ids:
                     seen_answer_ids.add(row["id"])
                     answers.append(row)
-        answers_to = sorted({v["a2_target"] for v in variants if v["a2_target"]})
+        # Display the ORIGINAL block titles, not the normalized a2_target —
+        # normalize() output is never display text (§3.5). The normalized
+        # value is still what dedups/matches (one entry per distinct target).
+        answers_to_by_target: Dict[str, str] = {}
+        for v in variants:
+            if v["a2_target"] and v["a2_target"] not in answers_to_by_target:
+                answers_to_by_target[v["a2_target"]] = (
+                    a2_display(v["block"]) or v["a2_target"])
+        answers_to = sorted(answers_to_by_target.values())
 
         # lineage (§9.2)
         dates = [v["round_date"] for v in variants]
@@ -859,7 +867,12 @@ def create_app(db_path=None, cfg: Optional[dict] = None) -> FastAPI:
             card_id = int(form.get("card_id") or 0)
         except ValueError:
             card_id = 0
-        if box is not None and card_id:
+        # Validate the card still exists (it may have been merged away by
+        # dedup while the page was open); a stale id redirects back without
+        # inserting instead of 500ing on the FK constraint.
+        card_exists = card_id and conn.execute(
+            "SELECT 1 FROM cards WHERE id = ?", (card_id,)).fetchone() is not None
+        if box is not None and card_exists:
             conn.execute(
                 "INSERT INTO card_box_members (box_id, card_id, note, added_at) "
                 "VALUES (?,?,?,?) ON CONFLICT(box_id, card_id) DO NOTHING",
@@ -937,19 +950,26 @@ def create_app(db_path=None, cfg: Optional[dict] = None) -> FastAPI:
     def stats_page(request: Request,
                    conn: sqlite3.Connection = Depends(get_conn)):
         stats = _corpus_stats(conn)
+        # analytics are excluded from card counts by default (spec §1.3),
+        # matching _corpus_stats/_topic_groups; variants still count every
+        # disclosure row.
         per_season = conn.execute(
-            "SELECT cl.season AS season, COUNT(DISTINCT v.card_id) AS cards, "
+            "SELECT cl.season AS season, "
+            " COUNT(DISTINCT CASE WHEN c.is_analytic = 0 THEN v.card_id END) "
+            "  AS cards, "
             " COUNT(*) AS variants "
-            "FROM card_variants v JOIN rounds r ON r.id = v.round_id "
+            "FROM card_variants v JOIN cards c ON c.id = v.card_id "
+            "JOIN rounds r ON r.id = v.round_id "
             "JOIN teams t ON t.id = r.team_id "
             "JOIN schools s ON s.id = t.school_id "
             "JOIN caselists cl ON cl.id = s.caselist_id "
             "WHERE cl.season IS NOT NULL GROUP BY cl.season ORDER BY cl.season"
         ).fetchall()
         per_topic = conn.execute(
-            "SELECT tp.code AS code, COUNT(DISTINCT v.card_id) AS cards "
+            "SELECT tp.code AS code, COUNT(DISTINCT c.id) AS cards "
             "FROM topics tp LEFT JOIN rounds r ON r.topic_id = tp.id "
             "LEFT JOIN card_variants v ON v.round_id = r.id "
+            "LEFT JOIN cards c ON c.id = v.card_id AND c.is_analytic = 0 "
             "GROUP BY tp.id ORDER BY tp.starts").fetchall()
         unassigned = conn.execute(
             "SELECT COUNT(*) FROM rounds WHERE topic_id IS NULL").fetchone()[0]

@@ -14,8 +14,28 @@ Two segmentation passes:
 Within a card (§3.4): the first 1–2 paragraphs after the tag are checked
 for a short cite; the remainder of those paragraphs is the full cite, out
 of which the first http(s) token becomes source_url and the first
-date-shaped token near the front becomes source_pub_date (ISO). A block
-with no cite-shaped paragraph is an analytic.
+date-shaped token near the front becomes source_pub_date (ISO).
+
+Cite detection is wider than the §3.4 short-cite regex alone (which stays
+the path of first precedence): a paragraph right after the tag that is
+fullcite-shaped — reasonably short (<= ~80 words) and carrying at least
+one strong cite signal (an http(s) token, a 19xx/20xx year, or an
+access-date marker such as "Accessed"/"DOA"/"retrieved") — also counts
+as the cite paragraph. In that case cite stays None, the whole paragraph
+becomes the fullcite, and the body starts after it. Wiki-loaded PF cards
+mostly ship cite='' with everything in fullcite, so their exports (§9.4)
+have fullcite-only cite paragraphs; this rule is what keeps their export
+-> re-parse -> re-ingest round trip from minting duplicate canonicals,
+and it also matches messy real-world cite formats.
+
+Analytic rule, reconciled: spec §1.3 defines an analytic as a Heading-4
+with NO BODY under it, while §3.4's shorthand says "no cite-shaped
+paragraph -> analytic". The §1.3 definition governs (the HF dataset
+itself maps only null-fulltext rows to analytics), so the two are
+reconciled as: no cite paragraph and only a trivial body (< ~40 words)
+-> analytic, as before; no cite paragraph but a substantial body
+(>= ~40 words) -> evidence card with cite=None/fullcite=None and the
+full body.
 
 Run markup precedence (§3.4, exact): highlight -> <mark>; bold+underline ->
 <strong><u>; underline -> <u>; bold -> <strong>; font size <= 9pt ->
@@ -92,7 +112,16 @@ _RE_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 _MONTH_NUM = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
               "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
 
+# Access-date markers ("Accessed 1-6-2020", "DOA 8/1/26", "retrieved ...")
+# — strong signals that a paragraph is a cite line, not body text.
+_ACCESS_RE = re.compile(
+    r"\b(?:accessed|access date|date of access|retrieved)\b", re.IGNORECASE)
+_DOA_RE = re.compile(r"\bDOA\b")
+
 _DATE_ZONE = 200          # "near the front" of the fullcite
+_FULLCITE_MAX_WORDS = 80  # widened cite detection: cap on a fullcite-only par
+_ANALYTIC_MAX_BODY_WORDS = 40  # no-cite blocks with >= this many body words
+                               # are evidence cards, not analytics (§1.3)
 _FALLBACK_TAG_MAX_WORDS = 40
 _FALLBACK_BOLD_FRACTION = 0.8
 _FALLBACK_MIN_PT = 12.5
@@ -173,6 +202,23 @@ def _looks_like_fullcite(text: str) -> bool:
     if extract_pub_date(text) is not None:
         return True
     return text.count(",") >= 2 and _wc(text) <= 120
+
+
+def _is_strong_fullcite(text: str) -> bool:
+    """Widened cite detection (see module docstring): does this paragraph
+    read like a full cite even with no short-cite prefix? Reasonably short
+    AND carrying at least one strong cite signal — an http(s) token, a
+    19xx/20xx year, or an access-date marker (Accessed / DOA / retrieved).
+    Stricter than _looks_like_fullcite (no comma-count heuristic), because
+    this one decides on its own whether a cite exists at all."""
+    if not text or _wc(text) > _FULLCITE_MAX_WORDS:
+        return False
+    return bool(
+        _URL_RE.search(text)
+        or _RE_YEAR.search(text)
+        or _ACCESS_RE.search(text)
+        or _DOA_RE.search(text)
+    )
 
 
 # --- effective run formatting (direct + inherited) -------------------------
@@ -375,6 +421,12 @@ def _build_stream(doc):
 def _split_cite(entries):
     """Cite detection over the first 1–2 paragraphs after the tag (§3.4).
     entries: rendered dicts. Returns (cite, fullcite, body_start, analytic).
+
+    Precedence: the short-cite regex paths first, then the widened
+    fullcite-only detection (_is_strong_fullcite; see module docstring).
+    ``analytic=True`` here only means "no cite paragraph found" —
+    _build_card downgrades that to an evidence card when a substantial
+    body follows (the §1.3/§3.4 reconciliation).
     """
     n = len(entries)
     if n == 0:
@@ -404,6 +456,16 @@ def _split_cite(entries):
             lead = _clean(txt(0))
             full = _clean(" ".join(x for x in (lead, rem) if x))
             return cite, (full or None), 2, False
+    # widened detection: a fullcite-shaped paragraph with no short-cite
+    # prefix (wiki-loaded PF cards, messy real-world cites) is still the
+    # cite paragraph — cite stays None, the whole line is the fullcite
+    if not entries[0]["from_table"] and _is_strong_fullcite(txt(0)):
+        return None, (_clean(txt(0)) or None), 1, False
+    # same, with a short lead-in line between the tag and the fullcite
+    if (n > 1 and not entries[0]["from_table"] and not entries[1]["from_table"]
+            and _wc(txt(0)) < 60 and _is_strong_fullcite(txt(1))):
+        full = _clean(" ".join(x for x in (_clean(txt(0)), _clean(txt(1))) if x))
+        return None, (full or None), 2, False
     return None, None, 0, True
 
 
@@ -435,6 +497,10 @@ def _build_card(tag, pocket, hat, block, members, warnings) -> Optional[CardReco
 
     body_entries = entries[body_start:]
     body_text = "\n".join(e["text"] for e in body_entries)
+    if analytic and _wc(body_text) >= _ANALYTIC_MAX_BODY_WORDS:
+        # §1.3 governs: a substantial body under the tag means evidence,
+        # even when no cite paragraph was recognized (module docstring).
+        analytic = False
     if not analytic and not body_text:
         warnings.append(
             "card %r has a cite but no body; treated as analytic" % tag[:40])

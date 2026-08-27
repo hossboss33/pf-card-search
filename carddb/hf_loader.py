@@ -62,8 +62,9 @@ import sqlite3
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .db import ledger_seen
-from .ingest import (CardRecord, IngestStats, attach_variant, finish_batch,
+from .a2 import a2_target as _a2_target
+from .db import fts_upsert_cards, ledger_seen, recompute_aggregates
+from .ingest import (CardRecord, IngestStats, attach_variant,
                      get_or_create_caselist, get_or_create_round,
                      get_or_create_school, get_or_create_team, insert_card,
                      ledger_stamp, normalize_side)
@@ -288,7 +289,7 @@ def ingest_hf_rows(conn: sqlite3.Connection, rows: Iterable[dict], cfg: dict,
     Per row: ledger check (source='hf', external_id=row id) -> map ->
     get_or_create entities -> synthetic document -> insert_card +
     attach_variant -> hf_buckets -> ledger stamp. Commits every ~5k processed
-    rows; finish_batch (FTS + aggregates) at the end. Rows failing the
+    rows, flushing FTS + aggregates with every commit. Rows failing the
     event filter are not ledger-stamped (a later pf_only=False run can still
     ingest them) and are counted only in the log, not in stats.units_seen.
     """
@@ -298,6 +299,7 @@ def ingest_hf_rows(conn: sqlite3.Connection, rows: Iterable[dict], cfg: dict,
     events_seen: set = set()
     filtered_out = 0
     since_commit = 0
+    pending_ids: set = set()  # card ids awaiting an FTS/aggregate flush
 
     # get_or_create caches — the full load is millions of rows; skip the
     # per-row SELECTs for entities we've already resolved.
@@ -378,10 +380,43 @@ def ingest_hf_rows(conn: sqlite3.Connection, rows: Iterable[dict], cfg: dict,
             doc_cache[meta["doc_sha"]] = doc_id
 
         card_id, created = insert_card(conn, rec)
+
+        # A re-shipped row with changed content (ledger sha mismatch) must
+        # fully reprocess: move its variant off the stale card, refresh the
+        # markup, and drop the stale canonical if nothing points at it.
+        existing = conn.execute(
+            "SELECT id, card_id FROM card_variants WHERE document_id = ? AND ordinal = ?",
+            (doc_id, rec.ordinal)).fetchone()
+        if existing is not None and existing["card_id"] != card_id:
+            old_id = existing["card_id"]
+            conn.execute("DELETE FROM card_variants WHERE id = ?", (existing["id"],))
+            left = conn.execute(
+                "SELECT COUNT(*) FROM card_variants WHERE card_id = ?",
+                (old_id,)).fetchone()[0]
+            if left == 0:
+                for tbl in ("hf_buckets", "cite_health", "card_box_members"):
+                    try:
+                        conn.execute(f"DELETE FROM {tbl} WHERE card_id = ?", (old_id,))
+                    except sqlite3.OperationalError:
+                        pass  # table not created in this DB yet
+                conn.execute("DELETE FROM card_fts WHERE rowid = ?", (old_id,))
+                conn.execute("DELETE FROM cards WHERE id = ?", (old_id,))
+            else:
+                pending_ids.add(old_id)
+        elif existing is not None:
+            # same canonical card, updated markup/metadata on the re-ship
+            conn.execute(
+                "UPDATE card_variants SET pocket=?, hat=?, block=?, a2_target=?, "
+                " markup_html=?, summary=?, spoken=?, highlight_ratio=? WHERE id=?",
+                (rec.pocket, rec.hat, rec.block, _a2_target(rec.block),
+                 rec.markup_html, rec.summary, rec.spoken, rec.highlight_ratio,
+                 existing["id"]))
+
         _, vcreated = attach_variant(conn, card_id, rec, doc_id, round_db_id)
         stats.new_cards += int(created)
         stats.new_variants += int(vcreated)
         stats.touched_card_ids.add(card_id)
+        pending_ids.add(card_id)
         stats.parsed += 1
 
         if meta["bucket_id"]:
@@ -393,11 +428,21 @@ def ingest_hf_rows(conn: sqlite3.Connection, rows: Iterable[dict], cfg: dict,
 
         since_commit += 1
         if since_commit >= BATCH_SIZE:
+            # Flush FTS + aggregates INSIDE every batch so an interrupted
+            # multi-hour load never leaves committed cards unfindable (the
+            # ledger would skip them forever on rerun). `carddb reindex`
+            # remains the belt-and-braces repair path.
+            fts_upsert_cards(conn, pending_ids)
+            recompute_aggregates(conn, pending_ids)
             conn.commit()
+            pending_ids.clear()
             since_commit = 0
             logger.info("hf ingest progress: %s", stats.summary())
 
-    finish_batch(conn, stats)
+    fts_upsert_cards(conn, pending_ids)
+    recompute_aggregates(conn, pending_ids)
+    conn.commit()
+    pending_ids.clear()
     # spec §11 M1: log the distinct caselist/event census.
     logger.info("hf ingest: distinct caselistName values seen: %s",
                 sorted(caselists_seen))
