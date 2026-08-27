@@ -1,0 +1,23 @@
+# Data never ships in the repo: card bodies are copyrighted excerpts (spec §0.4)
+data/raw/
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backups/
+reports/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Local secrets / env
+.env

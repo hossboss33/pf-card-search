@@ -1,0 +1,35 @@
+# pf-card-search configuration. Spec §10.
+# Credentials are named by env var here, never stored as values.
+
+[paths]
+db = "data/carddb.sqlite"
+raw_store = "data/raw"
+topics = "data/topics.json"
+reports = "reports"
+backups = "backups"
+
+[sync]
+api_base = "https://api.opencaselist.com/v1"
+rate_limit_rps = 1.0        # spec §0.2: hard cap, 1 request/second
+max_retries = 5
+contact_email = ""          # set yours; it is included in the User-Agent
+user_agent = "pf-card-search (personal research index)"
+tabroom_username_env = "TABROOM_USERNAME"
+tabroom_password_env = "TABROOM_PASSWORD"
+endpoints_file = "config/endpoints.toml"
+
+[hf]
+dataset = "Yusuf5/OpenCaselist"
+# PF caselist slugs are discovered by inspecting the data
+# (`carddb ingest --source hf` logs distinct values). Filled after
+# inspection, never guessed (spec §2.1).
+pf_caselist_slugs = []
+
+[search]
+page_size = 30
+
+[features]
+semantic = false
+
+[export]
+wpm = 250
