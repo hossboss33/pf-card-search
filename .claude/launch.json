@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "carddb",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "carddb", "serve", "--port", "8321"],
+      "port": 8321
+    }
+  ]
+}

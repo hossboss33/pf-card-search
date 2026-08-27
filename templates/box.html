@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ box['name'] }} &middot; PF card search{% endblock %}
+{% block content %}
+<h1>{{ box['name'] }}</h1>
+<p class="meta">{{ members|length }} card{{ '' if members|length == 1 else 's' }}
+  &middot; {{ total_words }} spoken words
+  &middot; {{ read_time }} at {{ wpm }} wpm
+  &middot; <a href="/boxes/{{ box['id'] }}/export.json">Export as JSON</a></p>
+
+{% if members %}
+<form method="post" action="/export/docx" class="inline-form export-form">
+  <input type="hidden" name="ids" value="{{ card_ids }}">
+  <input type="hidden" name="hl" value="green" class="hl-input">
+  <label for="preset" class="visually-hidden">Export preset</label>
+  <select name="preset" id="preset">
+    <option value="house">House layout</option>
+    <option value="verbatim">Plain Verbatim</option>
+  </select>
+  <button type="submit">Download .docx</button>
+</form>
+
+<ul class="ruled">
+  {% for m in members %}
+  <li>
+    <a href="/card/{{ m['id'] }}">{{ m['tag'] or '(untagged card)' }}</a>
+    <span class="meta">{{ m['cite'] or '' }} &middot; {{ m['team_count']|nlabel('team') }}{% if m['note'] %} &middot; {{ m['note'] }}{% endif %}</span>
+    <form method="post" action="/boxes/{{ box['id'] }}/remove" class="inline-form">
+      <input type="hidden" name="card_id" value="{{ m['id'] }}">
+      <button type="submit" class="quiet-btn">Remove from box</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="meta">This box is empty. Add cards from any card page.</p>
+{% endif %}
+{% endblock %}

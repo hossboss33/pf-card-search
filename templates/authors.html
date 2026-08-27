@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Authors &middot; PF card search{% endblock %}
+{% block content %}
+<h1>Authors and outlets</h1>
+<p class="meta">Cite-name clusters across the corpus, with qualifications mined from full cites, and the domains cards are cut from.</p>
+
+<h2 class="h-quiet">Authors</h2>
+{% if authors %}
+<table class="ruled">
+  <thead><tr><th scope="col">Short cite</th><th scope="col">Cards</th><th scope="col">Qualifications (sampled)</th></tr></thead>
+  <tbody>
+    {% for a in authors %}
+    <tr>
+      <td><a href="/search?q=cite:&quot;{{ a['cite']|urlencode }}&quot;">{{ a['cite'] }}</a></td>
+      <td>{{ a['n'] }}</td>
+      <td class="meta">{{ a['quals'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="meta">No cites in the index yet.</p>
+{% endif %}
+
+<h2 class="h-quiet">Source domains</h2>
+{% if domains %}
+<table class="ruled">
+  <thead><tr><th scope="col">Domain</th><th scope="col">Cards</th></tr></thead>
+  <tbody>
+    {% for d, n in domains %}<tr><td>{{ d }}</td><td>{{ n }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="meta">No source URLs in the index yet.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Stats &middot; PF card search{% endblock %}
+{% block content %}
+<h1>Corpus stats</h1>
+<table class="ruled stats-table">
+  <tbody>
+    <tr><th scope="row">Canonical cards</th><td>{{ stats.cards }}</td></tr>
+    <tr><th scope="row">Analytics</th><td>{{ stats.analytics }}</td></tr>
+    <tr><th scope="row">Disclosure variants</th><td>{{ stats.variants }}</td></tr>
+    <tr><th scope="row">Rounds</th><td>{{ stats.rounds }}</td></tr>
+    <tr><th scope="row">Teams</th><td>{{ stats.teams }}</td></tr>
+    <tr><th scope="row">Schools</th><td>{{ stats.schools }}</td></tr>
+    <tr><th scope="row">Topics</th><td>{{ stats.topics }}</td></tr>
+    <tr><th scope="row">Seasons covered</th><td>{{ stats.seasons_covered }}</td></tr>
+    <tr><th scope="row">Dedup merges</th><td>{{ merges }}</td></tr>
+    <tr><th scope="row">Rounds without a topic (unassigned bucket)</th><td>{{ unassigned }}</td></tr>
+  </tbody>
+</table>
+
+{% if per_season %}
+<h2 class="h-quiet">By season</h2>
+<table class="ruled">
+  <thead><tr><th scope="col">Season</th><th scope="col">Cards</th><th scope="col">Variants</th></tr></thead>
+  <tbody>
+    {% for r in per_season %}<tr><td>{{ r['season'] }}</td><td>{{ r['cards'] }}</td><td>{{ r['variants'] }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if per_topic %}
+<h2 class="h-quiet">By topic</h2>
+<table class="ruled">
+  <thead><tr><th scope="col">Topic</th><th scope="col">Cards</th></tr></thead>
+  <tbody>
+    {% for r in per_topic %}<tr><td><a href="/topic/{{ r['code'] }}">{{ r['code'] }}</a></td><td>{{ r['cards'] }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if docs %}
+<h2 class="h-quiet">Documents by parse status</h2>
+<table class="ruled">
+  <thead><tr><th scope="col">Status</th><th scope="col">Documents</th></tr></thead>
+  <tbody>
+    {% for r in docs %}<tr><td>{{ r['status'] }}</td><td>{{ r['n'] }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

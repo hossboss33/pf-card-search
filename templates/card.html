@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ card['tag'] or 'Card' }} &middot; PF card search{% endblock %}
+{% block content %}
+
+<div id="legend" class="legend no-print" hidden>
+  <p class="h-quiet">The parts of a cut card</p>
+  <ul>
+    <li><span class="legend-tag">Tag</span> the debater's one-sentence claim</li>
+    <li><span class="legend-cite">Cite</span> short cite spoken in round, full cite below it</li>
+    <li><u>Underlined</u> the sentences judged relevant</li>
+    <li><mark>Highlighted</mark> the exact words read aloud</li>
+    <li><span class="min">Minimized</span> kept for context, not meant to be read</li>
+  </ul>
+  <button type="button" id="legend-dismiss">Dismiss</button>
+</div>
+
+<article class="card-doc" id="card" data-card-id="{{ card['id'] }}">
+  <h1 class="tag">{{ card['tag'] or '(untagged card)' }}</h1>
+  <p class="citeline"><strong class="shortcite">{{ card['cite'] or '' }}</strong>
+    {% if card['fullcite'] %}<span class="fullcite">{{ card['fullcite'] }}</span>{% endif %}</p>
+  {% if card['is_analytic'] %}
+  <p class="meta">Analytic. Asserted without evidence; no card body was disclosed.</p>
+  {% endif %}
+
+  {% if variants %}
+  <div class="variant-controls no-print" role="group" aria-label="Highlighting shown">
+    <span class="meta">Highlighting:</span>
+    {%- for v in variants %}
+    <button type="button" class="variant-btn{% if loop.first %} active{% endif %}"
+      data-variant="{{ v['id'] }}">{{ v['label'] }}</button>
+    {%- endfor %}
+    {% if consensus_tokens %}<button type="button" class="variant-btn" data-variant="consensus" title="Words darken the more teams highlight them">Consensus</button>{% endif %}
+    <button type="button" id="toggle-min" class="quiet-btn">Hide minimized text</button>
+  </div>
+  {% endif %}
+
+  <div class="variant-bodies">
+    {%- for v in variants %}
+    <div class="body variant-body" data-variant="{{ v['id'] }}" {% if not loop.first %}hidden{% endif %}>{{ v['markup_safe']|safe }}</div>
+    {%- endfor %}
+    {% if consensus_tokens %}
+    <div class="body consensus-body" data-variant="consensus" hidden>
+      {%- for t in consensus_tokens -%}
+      <span class="ctok" data-count="{{ t.count }}"{% if t.count %} style="--w:{{ t.weight }}"{% endif %}>{{ t.token }}</span>{{ ' ' }}
+      {%- endfor -%}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card-actions no-print">
+    <form method="post" action="/export/docx" class="inline-form export-form">
+      <input type="hidden" name="ids" value="{{ card['id'] }}">
+      <input type="hidden" name="hl" value="{{ hl }}" class="hl-input">
+      <label for="preset" class="visually-hidden">Export preset</label>
+      <select name="preset" id="preset">
+        <option value="house">House layout</option>
+        <option value="verbatim">Plain Verbatim</option>
+      </select>
+      <button type="submit">Download .docx</button>
+    </form>
+    <button type="button" id="copy-spoken">Copy spoken text</button>
+    {% if boxes %}
+    <form method="post" action="/boxes/0/add" class="inline-form" id="box-add-form">
+      <input type="hidden" name="card_id" value="{{ card['id'] }}">
+      <input type="hidden" name="back" value="/card/{{ card['id'] }}">
+      <label for="box-select" class="visually-hidden">Card box</label>
+      <select id="box-select">
+        {%- for b in boxes %}<option value="{{ b['id'] }}">{{ b['name'] }}</option>{% endfor %}
+      </select>
+      <button type="submit">Add to box</button>
+    </form>
+    {% endif %}
+  </div>
+  <div id="spoken-text" hidden>{{ spoken }}</div>
+</article>
+
+<section class="card-extras no-print">
+  <h2 class="h-quiet">Lineage</h2>
+  <p class="meta">
+    {% if first_seen %}First seen {{ first_seen }} &middot;{% endif %}
+    read by {{ card['team_count'] }} team{{ '' if card['team_count'] == 1 else 's' }}
+    &middot; {{ card['school_count'] }} school{{ '' if card['school_count'] == 1 else 's' }}
+    &middot; {{ card['variant_count'] }} disclosure{{ '' if card['variant_count'] == 1 else 's' }}
+    {%- for c in topic_codes %} &middot; <a href="/topic/{{ c }}">{{ c }}</a>{% endfor %}
+  </p>
+  {% if spark %}<p class="meta">Disclosures per month ({{ months|first }} to {{ months|last }}): {{ spark|safe }}</p>{% endif %}
+
+  {% if health %}
+  <h2 class="h-quiet">Cite health</h2>
+  <p class="meta">Source link is {{ health['status'] }}{% if health['http_status'] %} (HTTP {{ health['http_status'] }}){% endif %}{% if health['checked_at'] %}, checked {{ health['checked_at'][:10] }}{% endif %}.
+    {% if card['source_url'] %}<a href="{{ card['source_url'] }}" rel="noopener">Source</a>{% endif %}
+    {% if health['status'] == 'dead' and health['wayback_url'] %}&middot; <a href="{{ health['wayback_url'] }}" rel="noopener">Wayback snapshot</a>{% endif %}</p>
+  {% elif card['source_url'] %}
+  <h2 class="h-quiet">Source</h2>
+  <p class="meta"><a href="{{ card['source_url'] }}" rel="noopener">{{ card['source_url'] }}</a>{% if card['source_pub_date'] %} &middot; published {{ card['source_pub_date'] }}{% endif %}</p>
+  {% endif %}
+
+  {% if flags %}
+  <h2 class="h-quiet">Heuristic flags</h2>
+  <p class="meta">Signals, not verdicts.
+    {% for f in flags %}<span class="glyph" title="{{ f.detail }}">{{ f.code }}: {{ f.label }}</span> {% endfor %}</p>
+  {% endif %}
+
+  {% if answers or answers_to %}
+  <h2 class="h-quiet">A2 cross-index</h2>
+  {% if answers_to %}<p class="meta">This card answers: {{ answers_to|join(' / ') }}</p>{% endif %}
+  {% if answers %}
+  <p class="meta">Answers other teams have disclosed to this argument:</p>
+  <ul class="ruled">
+    {% for a in answers %}<li><a href="/card/{{ a['id'] }}">{{ a['tag'] or '(untagged card)' }}</a> <span class="meta">{{ a['cite'] or '' }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+
+  <h2 class="h-quiet">Provenance</h2>
+  {% if variants %}
+  <table class="ruled provenance">
+    <thead><tr><th scope="col">Tournament</th><th scope="col">Side</th><th scope="col">Team</th><th scope="col">School</th><th scope="col">Date</th><th scope="col">Round</th></tr></thead>
+    <tbody>
+      {%- for v in variants %}
+      <tr>
+        <td>{{ v['tournament'] or '' }}</td>
+        <td>{{ v['side']|side }}</td>
+        <td>{% if v['team_id'] %}<a href="/team/{{ v['team_id'] }}">{{ v['team_name'] }}</a>{% endif %}</td>
+        <td>{% if v['school_id'] %}<a href="/school/{{ v['school_id'] }}">{{ v['school_name'] }}</a>{% endif %}</td>
+        <td>{{ v['round_date'] or '' }}</td>
+        <td>{% if v['rid'] %}<a href="/round/{{ v['rid'] }}">{{ v['round_label'] or 'round' }}</a>{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="meta">No disclosures recorded for this card.</p>
+  {% endif %}
+</section>
+{% endblock %}

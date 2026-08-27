@@ -1,0 +1,896 @@
+{
+ "_notes": "PF resolution history, seasons 2013-14 through 2026-27. season=2013 means the 2013-14 school year. Every resolution here was verified verbatim on 2026-08-27 against the NSDA's own topics page: seasons 2013-14 through 2025-26 from the 'Past Topics - Public Forum Debate' list on the Wayback-archived NSDA topics page (snapshot 2026-07-20, URL in each row's source_url; cross-checked against a 2025-05-09 snapshot, debatedrills.com/past-topics, and Wikipedia), and 2026-SO from the live page (also spec section 6.1, verified 2026-08-28). No row is unverified; there are no gaps. Cadence history, reflected in the slots: Sep/Oct (SO) has been one combined topic since 2013-14; November (NOV) and December (DEC) were separate monthly topics through 2017-18 and one combined Nov/Dec (ND) topic from 2018-19 on; January (JAN) and February (FEB) are monthly; March (MA) and April (APR) are separate topics in every season covered; NATS is the National Tournament topic, debated at NSDA Nationals in June (window here: June 1-30 of the season's closing year). Windows are calendar-month competition windows; May has no NSDA PF topic window, so May rounds fall through to the keyword fallback or the Unassigned bucket. 2026-27 status as of 2026-08-27: only the Sep/Oct topic is announced; the NSDA lists potential topics for the later slots and announces each winner on its release schedule (Nov/Dec on ~Oct 1), so those rows are intentionally absent until announced. Overrides: the NSDA National Tournament entries map to the season's NATS topic, which is what the NSDA's own lists label those topics ('Nationals <year>'). No TOC override is seeded: TOC is held in late April and its use of the April topic is covered by the date window; a per-year designated-topic override was not verified. NCFL Grand Nationals sets its own topics (per the NSDA page's footnote) and is deliberately not mapped.",
+ "topics": [
+  {
+   "code": "2013-SO",
+   "season": 2013,
+   "slot": "SO",
+   "resolution": "Resolved: Unilateral military force by the United States is justified to prevent nuclear proliferation.",
+   "starts": "2013-09-01",
+   "ends": "2013-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-NOV",
+   "season": 2013,
+   "slot": "NOV",
+   "resolution": "Resolved: The benefits of domestic surveillance by the National Security Agency outweigh the harms.",
+   "starts": "2013-11-01",
+   "ends": "2013-11-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-DEC",
+   "season": 2013,
+   "slot": "DEC",
+   "resolution": "Resolved: Immigration reform should include a path to citizenship for undocumented immigrants currently living in the United States.",
+   "starts": "2013-12-01",
+   "ends": "2013-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-JAN",
+   "season": 2013,
+   "slot": "JAN",
+   "resolution": "Resolved: Development assistance should be prioritized over military aid in the Sahel region of Africa.",
+   "starts": "2014-01-01",
+   "ends": "2014-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-FEB",
+   "season": 2013,
+   "slot": "FEB",
+   "resolution": "Resolved: The Supreme Court rightly decided that Section 4 of the Voting Rights Act violated the Constitution.",
+   "starts": "2014-02-01",
+   "ends": "2014-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-MA",
+   "season": 2013,
+   "slot": "MA",
+   "resolution": "Resolved: Single-gender classrooms would improve the quality of education in American public schools.",
+   "starts": "2014-03-01",
+   "ends": "2014-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-APR",
+   "season": 2013,
+   "slot": "APR",
+   "resolution": "Resolved: Prioritizing economic development over environmental protection is in the best interest of the people of India.",
+   "starts": "2014-04-01",
+   "ends": "2014-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2013-NATS",
+   "season": 2013,
+   "slot": "NATS",
+   "resolution": "Resolved: NATO should strengthen its relationship with Ukraine in order to deter further Russian aggression.",
+   "starts": "2014-06-01",
+   "ends": "2014-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-SO",
+   "season": 2014,
+   "slot": "SO",
+   "resolution": "Resolved: On balance, public subsidies for professional athletic organizations in the United States benefit their local communities.",
+   "starts": "2014-09-01",
+   "ends": "2014-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-NOV",
+   "season": 2014,
+   "slot": "NOV",
+   "resolution": "Resolved: On balance, the benefits of genetically modified foods outweigh the harms.",
+   "starts": "2014-11-01",
+   "ends": "2014-11-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-DEC",
+   "season": 2014,
+   "slot": "DEC",
+   "resolution": "Resolved: For-profit prisons in the United States should be banned.",
+   "starts": "2014-12-01",
+   "ends": "2014-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-JAN",
+   "season": 2014,
+   "slot": "JAN",
+   "resolution": "Resolved: United Nations peacekeepers should have the power to engage in offensive operations.",
+   "starts": "2015-01-01",
+   "ends": "2015-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-FEB",
+   "season": 2014,
+   "slot": "FEB",
+   "resolution": "Resolved: On balance, economic globalization benefits worldwide poverty reduction.",
+   "starts": "2015-02-01",
+   "ends": "2015-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-MA",
+   "season": 2014,
+   "slot": "MA",
+   "resolution": "Resolved: In the United States, students should be guaranteed two years of free tuition to a community or technical college.",
+   "starts": "2015-03-01",
+   "ends": "2015-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-APR",
+   "season": 2014,
+   "slot": "APR",
+   "resolution": "Resolved: Committing United States ground combat troops to fight ISIL is in the best interest of the United States.",
+   "starts": "2015-04-01",
+   "ends": "2015-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2014-NATS",
+   "season": 2014,
+   "slot": "NATS",
+   "resolution": "Resolved: The benefits of First Amendment protection of anonymous speech outweigh the harms.",
+   "starts": "2015-06-01",
+   "ends": "2015-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-SO",
+   "season": 2015,
+   "slot": "SO",
+   "resolution": "Resolved: The United States Federal Government ought to pay reparations to African Americans.",
+   "starts": "2015-09-01",
+   "ends": "2015-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-NOV",
+   "season": 2015,
+   "slot": "NOV",
+   "resolution": "Resolved: In response to the current crisis, a government should prioritize the humanitarian needs of refugees over its national interests.",
+   "starts": "2015-11-01",
+   "ends": "2015-11-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-DEC",
+   "season": 2015,
+   "slot": "DEC",
+   "resolution": "Resolved: On balance, standardized testing is beneficial to K-12 education in the United States.",
+   "starts": "2015-12-01",
+   "ends": "2015-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-JAN",
+   "season": 2015,
+   "slot": "JAN",
+   "resolution": "Resolved: On balance, economic sanctions are reducing the threat Russia poses to Western interests.",
+   "starts": "2016-01-01",
+   "ends": "2016-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-FEB",
+   "season": 2015,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States federal government should adopt a carbon tax.",
+   "starts": "2016-02-01",
+   "ends": "2016-02-29",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-MA",
+   "season": 2015,
+   "slot": "MA",
+   "resolution": "Resolved: The United States should withdraw its military presence from Okinawa.",
+   "starts": "2016-03-01",
+   "ends": "2016-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-APR",
+   "season": 2015,
+   "slot": "APR",
+   "resolution": "Resolved: To alleviate income inequality in the United States, increased spending on public infrastructure should be prioritized over increased spending on means-tested welfare programs.",
+   "starts": "2016-04-01",
+   "ends": "2016-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2015-NATS",
+   "season": 2015,
+   "slot": "NATS",
+   "resolution": "Resolved: On balance, a one-day national primary would be more beneficial for the United States than our current presidential primary process.",
+   "starts": "2016-06-01",
+   "ends": "2016-06-30",
+   "source_url": "https://web.archive.org/web/20160609091714/http://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-SO",
+   "season": 2016,
+   "slot": "SO",
+   "resolution": "Resolved: In United States public K-12 schools, the probable cause standard ought to apply to searches of students.",
+   "starts": "2016-09-01",
+   "ends": "2016-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-NOV",
+   "season": 2016,
+   "slot": "NOV",
+   "resolution": "Resolved: On balance, the benefits of the Internet of Things outweigh the harms of decreased personal privacy.",
+   "starts": "2016-11-01",
+   "ends": "2016-11-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-DEC",
+   "season": 2016,
+   "slot": "DEC",
+   "resolution": "Resolved: The United States should end Plan Colombia.",
+   "starts": "2016-12-01",
+   "ends": "2016-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-JAN",
+   "season": 2016,
+   "slot": "JAN",
+   "resolution": "Resolved: In order to better respond to international conflicts, the United States should significantly increase its military spending.",
+   "starts": "2017-01-01",
+   "ends": "2017-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-FEB",
+   "season": 2016,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States should lift its embargo against Cuba.",
+   "starts": "2017-02-01",
+   "ends": "2017-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-MA",
+   "season": 2016,
+   "slot": "MA",
+   "resolution": "Resolved: The United States should no longer pressure Israel to work toward a two-state solution.",
+   "starts": "2017-03-01",
+   "ends": "2017-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-APR",
+   "season": 2016,
+   "slot": "APR",
+   "resolution": "Resolved: The United States ought to replace the Electoral College with a direct national popular vote.",
+   "starts": "2017-04-01",
+   "ends": "2017-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2016-NATS",
+   "season": 2016,
+   "slot": "NATS",
+   "resolution": "Resolved: In East Africa, the United States federal government should prioritize its counterterrorism efforts over its humanitarian assistance.",
+   "starts": "2017-06-01",
+   "ends": "2017-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-SO",
+   "season": 2017,
+   "slot": "SO",
+   "resolution": "Resolved: Deployment of anti-missile systems is in South Korea’s best interest.",
+   "starts": "2017-09-01",
+   "ends": "2017-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-NOV",
+   "season": 2017,
+   "slot": "NOV",
+   "resolution": "Resolved: The United States should require universal background checks for all gun sales and transfers of ownership.",
+   "starts": "2017-11-01",
+   "ends": "2017-11-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-DEC",
+   "season": 2017,
+   "slot": "DEC",
+   "resolution": "Resolved: NCAA student athletes ought to be recognized as employees under the Fair Labor Standards Act.",
+   "starts": "2017-12-01",
+   "ends": "2017-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-JAN",
+   "season": 2017,
+   "slot": "JAN",
+   "resolution": "Resolved: Spain should grant Catalonia its independence.",
+   "starts": "2018-01-01",
+   "ends": "2018-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-FEB",
+   "season": 2017,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States should abolish the capital gains tax.",
+   "starts": "2018-02-01",
+   "ends": "2018-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-MA",
+   "season": 2017,
+   "slot": "MA",
+   "resolution": "Resolved: On balance, the current Authorization for Use of Military Force gives too much power to the president.",
+   "starts": "2018-03-01",
+   "ends": "2018-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-APR",
+   "season": 2017,
+   "slot": "APR",
+   "resolution": "Resolved: The United States federal government should increase its quota of H-1B visas.",
+   "starts": "2018-04-01",
+   "ends": "2018-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2017-NATS",
+   "season": 2017,
+   "slot": "NATS",
+   "resolution": "Resolved: On balance, the benefits of United States participation in the North American Free Trade Agreement outweigh the consequences.",
+   "starts": "2018-06-01",
+   "ends": "2018-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-SO",
+   "season": 2018,
+   "slot": "SO",
+   "resolution": "Resolved: The United States should accede to the United Nations Convention on the Law of the Sea without reservations.",
+   "starts": "2018-09-01",
+   "ends": "2018-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-ND",
+   "season": 2018,
+   "slot": "ND",
+   "resolution": "Resolved: The United States federal government should impose price controls on the pharmaceutical industry.",
+   "starts": "2018-11-01",
+   "ends": "2018-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-JAN",
+   "season": 2018,
+   "slot": "JAN",
+   "resolution": "Resolved: The United States federal government should prioritize reducing the federal debt over promoting economic growth.",
+   "starts": "2019-01-01",
+   "ends": "2019-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-FEB",
+   "season": 2018,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States should end its arms sales to Saudi Arabia.",
+   "starts": "2019-02-01",
+   "ends": "2019-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-MA",
+   "season": 2018,
+   "slot": "MA",
+   "resolution": "Resolved: The United States should promote the development of market rate housing in urban neighborhoods.",
+   "starts": "2019-03-01",
+   "ends": "2019-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-APR",
+   "season": 2018,
+   "slot": "APR",
+   "resolution": "Resolved: The United Nations should grant India permanent membership on the Security Council.",
+   "starts": "2019-04-01",
+   "ends": "2019-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2018-NATS",
+   "season": 2018,
+   "slot": "NATS",
+   "resolution": "Resolved: The United States federal government should enforce antitrust regulations on technology giants.",
+   "starts": "2019-06-01",
+   "ends": "2019-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-SO",
+   "season": 2019,
+   "slot": "SO",
+   "resolution": "Resolved: The European Union should join the Belt and Road Initiative.",
+   "starts": "2019-09-01",
+   "ends": "2019-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-ND",
+   "season": 2019,
+   "slot": "ND",
+   "resolution": "Resolved: The benefits of the United States federal government’s use of offensive cyber operations outweigh the harms.",
+   "starts": "2019-11-01",
+   "ends": "2019-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-JAN",
+   "season": 2019,
+   "slot": "JAN",
+   "resolution": "Resolved: The United States should end its economic sanctions against Venezuela.",
+   "starts": "2020-01-01",
+   "ends": "2020-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-FEB",
+   "season": 2019,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States should replace means-tested welfare programs with a universal basic income.",
+   "starts": "2020-02-01",
+   "ends": "2020-02-29",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-MA",
+   "season": 2019,
+   "slot": "MA",
+   "resolution": "Resolved: The United States should increase its use of nuclear energy for commercial energy production.",
+   "starts": "2020-03-01",
+   "ends": "2020-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-APR",
+   "season": 2019,
+   "slot": "APR",
+   "resolution": "Resolved: The United States should remove nearly all of its military presence in the Arab States of the Persian Gulf.",
+   "starts": "2020-04-01",
+   "ends": "2020-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2019-NATS",
+   "season": 2019,
+   "slot": "NATS",
+   "resolution": "Resolved: On balance, charter schools are beneficial to the quality of education in the United States.",
+   "starts": "2020-06-01",
+   "ends": "2020-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-SO",
+   "season": 2020,
+   "slot": "SO",
+   "resolution": "Resolved: The United States federal government should enact the Medicare-For-All Act of 2019.",
+   "starts": "2020-09-01",
+   "ends": "2020-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-ND",
+   "season": 2020,
+   "slot": "ND",
+   "resolution": "Resolved: The United States should adopt a declaratory nuclear policy of no first use.",
+   "starts": "2020-11-01",
+   "ends": "2020-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-JAN",
+   "season": 2020,
+   "slot": "JAN",
+   "resolution": "Resolved: The National Security Agency should end its surveillance of U.S. citizens and lawful permanent residents.",
+   "starts": "2021-01-01",
+   "ends": "2021-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-FEB",
+   "season": 2020,
+   "slot": "FEB",
+   "resolution": "Resolved: On balance, the benefits of urbanization in West Africa outweigh the harms.",
+   "starts": "2021-02-01",
+   "ends": "2021-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-MA",
+   "season": 2020,
+   "slot": "MA",
+   "resolution": "Resolved: On balance, the benefits of creating the United States Space Force outweigh the harms.",
+   "starts": "2021-03-01",
+   "ends": "2021-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-APR",
+   "season": 2020,
+   "slot": "APR",
+   "resolution": "Resolved: The benefits of the International Monetary Fund outweigh the harms.",
+   "starts": "2021-04-01",
+   "ends": "2021-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2020-NATS",
+   "season": 2020,
+   "slot": "NATS",
+   "resolution": "Resolved: In the United States, social media is beneficial for democratic values.",
+   "starts": "2021-06-01",
+   "ends": "2021-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-SO",
+   "season": 2021,
+   "slot": "SO",
+   "resolution": "Resolved: The North Atlantic Treaty Organization should substantially increase its defense commitments to the Baltic states.",
+   "starts": "2021-09-01",
+   "ends": "2021-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-ND",
+   "season": 2021,
+   "slot": "ND",
+   "resolution": "Resolved: Increased United States federal regulation of cryptocurrency transactions and/or assets will produce more benefits than harms.",
+   "starts": "2021-11-01",
+   "ends": "2021-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-JAN",
+   "season": 2021,
+   "slot": "JAN",
+   "resolution": "Resolved: The United States federal government should legalize all illicit drugs.",
+   "starts": "2022-01-01",
+   "ends": "2022-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-FEB",
+   "season": 2021,
+   "slot": "FEB",
+   "resolution": "Resolved: On balance, Turkey’s membership is beneficial to the North Atlantic Treaty Organization.",
+   "starts": "2022-02-01",
+   "ends": "2022-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-MA",
+   "season": 2021,
+   "slot": "MA",
+   "resolution": "Resolved: In the United States, the benefits of increasing organic agriculture outweigh the harms.",
+   "starts": "2022-03-01",
+   "ends": "2022-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-APR",
+   "season": 2021,
+   "slot": "APR",
+   "resolution": "Resolved: Japan should revise Article 9 of its Constitution to develop offensive military capabilities.",
+   "starts": "2022-04-01",
+   "ends": "2022-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2021-NATS",
+   "season": 2021,
+   "slot": "NATS",
+   "resolution": "Resolved: The United States should establish a comprehensive bilateral trade agreement with Taiwan.",
+   "starts": "2022-06-01",
+   "ends": "2022-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-SO",
+   "season": 2022,
+   "slot": "SO",
+   "resolution": "Resolved: The United States Federal Government should substantially increase its investment in high-speed rail.",
+   "starts": "2022-09-01",
+   "ends": "2022-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-ND",
+   "season": 2022,
+   "slot": "ND",
+   "resolution": "Resolved: The United States’ strategy of Great Power Competition produces more benefits than harms.",
+   "starts": "2022-11-01",
+   "ends": "2022-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-JAN",
+   "season": 2022,
+   "slot": "JAN",
+   "resolution": "Resolved: The United States Federal Government should increase its diplomatic efforts to peacefully resolve internal armed conflicts in West Asia.",
+   "starts": "2023-01-01",
+   "ends": "2023-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-FEB",
+   "season": 2022,
+   "slot": "FEB",
+   "resolution": "Resolved: In the United States, right-to-work laws do more harm than good.",
+   "starts": "2023-02-01",
+   "ends": "2023-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-MA",
+   "season": 2022,
+   "slot": "MA",
+   "resolution": "Resolved: The Republic of India should sign the Artemis Accords.",
+   "starts": "2023-03-01",
+   "ends": "2023-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-APR",
+   "season": 2022,
+   "slot": "APR",
+   "resolution": "Resolved: The United States Federal Government should ban the collection of personal data through biometric recognition technology.",
+   "starts": "2023-04-01",
+   "ends": "2023-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2022-NATS",
+   "season": 2022,
+   "slot": "NATS",
+   "resolution": "Resolved: The United States should adopt ranked-choice voting for its federal elections.",
+   "starts": "2023-06-01",
+   "ends": "2023-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-SO",
+   "season": 2023,
+   "slot": "SO",
+   "resolution": "Resolved: The United States federal government should substantially increase its military presence in the Arctic.",
+   "starts": "2023-09-01",
+   "ends": "2023-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-ND",
+   "season": 2023,
+   "slot": "ND",
+   "resolution": "Resolved: The United States federal government should forgive all federal student loan debt.",
+   "starts": "2023-11-01",
+   "ends": "2023-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-JAN",
+   "season": 2023,
+   "slot": "JAN",
+   "resolution": "Resolved: The United States federal government should repeal Section 230 of the Communications Decency Act.",
+   "starts": "2024-01-01",
+   "ends": "2024-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-FEB",
+   "season": 2023,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States federal government should ban single-use plastics.",
+   "starts": "2024-02-01",
+   "ends": "2024-02-29",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-MA",
+   "season": 2023,
+   "slot": "MA",
+   "resolution": "Resolved: In the United States, collegiate student-athletes should be classified as employees of their educational institution.",
+   "starts": "2024-03-01",
+   "ends": "2024-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-APR",
+   "season": 2023,
+   "slot": "APR",
+   "resolution": "Resolved: The United Nations should abolish permanent membership on its Security Council.",
+   "starts": "2024-04-01",
+   "ends": "2024-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2023-NATS",
+   "season": 2023,
+   "slot": "NATS",
+   "resolution": "Resolved: The United States should establish a comprehensive bilateral trade agreement with the European Union.",
+   "starts": "2024-06-01",
+   "ends": "2024-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-SO",
+   "season": 2024,
+   "slot": "SO",
+   "resolution": "Resolved: The United States federal government should substantially expand its surveillance infrastructure along its southern border.",
+   "starts": "2024-09-01",
+   "ends": "2024-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-ND",
+   "season": 2024,
+   "slot": "ND",
+   "resolution": "Resolved: The United States should substantially reduce its military support of Taiwan.",
+   "starts": "2024-11-01",
+   "ends": "2024-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-JAN",
+   "season": 2024,
+   "slot": "JAN",
+   "resolution": "Resolved: The African Union should grant diplomatic recognition to the Republic of Somaliland as an independent state.",
+   "starts": "2025-01-01",
+   "ends": "2025-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-FEB",
+   "season": 2024,
+   "slot": "FEB",
+   "resolution": "Resolved: The United States should accede to the Rome Statute of the International Criminal Court.",
+   "starts": "2025-02-01",
+   "ends": "2025-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-MA",
+   "season": 2024,
+   "slot": "MA",
+   "resolution": "Resolved: In the United States, the benefits of the use of generative artificial intelligence in education outweigh the harms.",
+   "starts": "2025-03-01",
+   "ends": "2025-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-APR",
+   "season": 2024,
+   "slot": "APR",
+   "resolution": "Resolved: The United States federal government should substantially increase its investment in domestic nuclear energy.",
+   "starts": "2025-04-01",
+   "ends": "2025-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2024-NATS",
+   "season": 2024,
+   "slot": "NATS",
+   "resolution": "Resolved: On balance, in the United States, the benefits of presidential executive orders outweigh the harms.",
+   "starts": "2025-06-01",
+   "ends": "2025-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-SO",
+   "season": 2025,
+   "slot": "SO",
+   "resolution": "Resolved: The United Kingdom should rejoin the European Union.",
+   "starts": "2025-09-01",
+   "ends": "2025-10-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-ND",
+   "season": 2025,
+   "slot": "ND",
+   "resolution": "Resolved: The United States federal government should require technology companies to provide lawful access to encrypted communications.",
+   "starts": "2025-11-01",
+   "ends": "2025-12-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-JAN",
+   "season": 2025,
+   "slot": "JAN",
+   "resolution": "Resolved: The People’s Republic of China should substantially reduce its international extraction of natural resources.",
+   "starts": "2026-01-01",
+   "ends": "2026-01-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-FEB",
+   "season": 2025,
+   "slot": "FEB",
+   "resolution": "Resolved: The Federal Trade Commission should establish a federal regulatory framework for sports betting.",
+   "starts": "2026-02-01",
+   "ends": "2026-02-28",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-MA",
+   "season": 2025,
+   "slot": "MA",
+   "resolution": "Resolved: The United States federal government should ban corporate acquisition of single-family residences.",
+   "starts": "2026-03-01",
+   "ends": "2026-03-31",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-APR",
+   "season": 2025,
+   "slot": "APR",
+   "resolution": "Resolved: The United States should eliminate the President’s authority to deploy military forces abroad without Congressional approval.",
+   "starts": "2026-04-01",
+   "ends": "2026-04-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2025-NATS",
+   "season": 2025,
+   "slot": "NATS",
+   "resolution": "Resolved: The United States is justified in using force to remove authoritarian leaders from power.",
+   "starts": "2026-06-01",
+   "ends": "2026-06-30",
+   "source_url": "https://web.archive.org/web/20260720201707/https://www.speechanddebate.org/topics/"
+  },
+  {
+   "code": "2026-SO",
+   "season": 2026,
+   "slot": "SO",
+   "resolution": "Resolved: The United States federal government should enact a moratorium on hyperscale data center construction.",
+   "starts": "2026-09-01",
+   "ends": "2026-10-31",
+   "source_url": "https://www.speechanddebate.org/topics/"
+  }
+ ],
+ "overrides": [
+  {
+   "match": "nsda nationals",
+   "slot": "NATS"
+  },
+  {
+   "match": "nsda national tournament",
+   "slot": "NATS"
+  },
+  {
+   "match": "national speech & debate tournament",
+   "slot": "NATS"
+  },
+  {
+   "match": "national speech and debate tournament",
+   "slot": "NATS"
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ topic['code'] }} &middot; PF card search{% endblock %}
+{% block content %}
+<section class="topic-head">
+  <h1>{{ topic['code'] }} <span class="meta">{{ slot_label }} &middot; {{ status }}</span></h1>
+  {% if topic['resolution'] %}<p class="resolution">{{ topic['resolution'] }}</p>{% endif %}
+  <p class="meta">{{ topic['starts'] or 'start unknown' }} to {{ topic['ends'] or 'end unknown' }}
+    &middot; {{ card_count }} cards
+    &middot; <a href="/feed/topic/{{ topic['code'] }}.rss">RSS feed</a>
+    &middot; <a href="/search?q=&amp;topic={{ topic['code'] }}">Search this topic</a></p>
+  {% if status == 'future' and card_count == 0 %}
+  <p>Announced. 0 cards disclosed yet.</p>
+  {% elif card_count == 0 %}
+  <p class="meta">No cards disclosed on this topic are in the index.</p>
+  {% endif %}
+</section>
+
+{% if card_count > 0 %}
+<section class="dashboard">
+  <h2 class="h-quiet">Coverage</h2>
+  {% if spark %}<p class="meta">Cards per day since the topic started: {{ spark|safe }}</p>{% endif %}
+  <p class="meta">Disclosure volume by side:</p>
+  <div class="sidebar-chart" role="img" aria-label="Pro {{ sides['P'] }} disclosures, Con {{ sides['C'] }} disclosures">
+    <div class="side-row"><span class="side-label">Pro</span><span class="side-bar pro" style="width:{{ pro_pct }}%"></span><span class="meta">{{ sides['P'] }}</span></div>
+    <div class="side-row"><span class="side-label">Con</span><span class="side-bar con" style="width:{{ con_pct }}%"></span><span class="meta">{{ sides['C'] }}</span></div>
+  </div>
+
+  {% if most_read %}
+  <h2 class="h-quiet">Most-read cards</h2>
+  <ul class="ruled">
+    {% for c in most_read %}
+    <li><a href="/card/{{ c['id'] }}">{{ c['tag'] or '(untagged card)' }}</a>
+      <span class="meta">{{ c['cite'] or '' }} &middot; {{ c['team_count']|nlabel('team') }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if authors %}
+  <h2 class="h-quiet">Top cited authors</h2>
+  <ul class="ruled">
+    {% for a in authors %}<li>{{ a['cite'] }} <span class="meta">{{ a['n']|nlabel('card') }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if domains %}
+  <h2 class="h-quiet">Top source domains</h2>
+  <ul class="ruled">
+    {% for d, n in domains %}<li>{{ d }} <span class="meta">{{ n|nlabel('card') }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if newest %}
+  <h2 class="h-quiet">Newest cards</h2>
+  <ul class="ruled">
+    {% for c in newest %}
+    <li><a href="/card/{{ c['id'] }}">{{ c['tag'] or '(untagged card)' }}</a>
+      <span class="meta">{{ c['cite'] or '' }} &middot; {{ c['latest'] or '' }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

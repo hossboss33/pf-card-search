@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ school['display_name'] or school['name'] }} &middot; PF card search{% endblock %}
+{% block content %}
+<h1>{{ school['display_name'] or school['name'] }}</h1>
+<p class="meta">{% if school['state'] %}{{ school['state'] }} &middot; {% endif %}{% if school['caselist_name'] %}{{ school['caselist_name'] }} &middot; {% endif %}{{ teams|length }} team{{ '' if teams|length == 1 else 's' }}</p>
+{% if teams %}
+<p class="meta">Teams:
+  {% for t in teams %}<a href="/team/{{ t['id'] }}">{{ t['display_name'] or t['name'] }}</a>{{ ' ' }}{% endfor %}</p>
+{% endif %}
+
+{% if groups %}
+{% for topic_code, cards in groups.items() %}
+<h2 class="h-quiet">{% if topic_code != 'Unassigned' %}<a href="/topic/{{ topic_code }}">{{ topic_code }}</a>{% else %}Unassigned{% endif %}</h2>
+<ul class="ruled">
+  {% for c in cards %}
+  <li><a href="/card/{{ c['id'] }}">{{ c['tag'] or '(untagged card)' }}</a>
+    <span class="meta">{{ c['cite'] or '' }} &middot; {{ c['team_count']|nlabel('team') }}</span></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% else %}
+<p class="meta">No disclosed cards from this school are in the index.</p>
+{% endif %}
+{% endblock %}

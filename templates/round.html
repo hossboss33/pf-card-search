@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Round &middot; PF card search{% endblock %}
+{% block content %}
+<h1>{{ round['tournament'] or 'Unknown tournament' }} {{ round['round_label'] or '' }}</h1>
+<p class="meta">
+  {{ round['side']|side }}
+  {% if round['team_name'] %}&middot; <a href="/team/{{ round['team_id_'] }}">{{ round['team_name'] }}</a>{% endif %}
+  {% if round['school_name'] %}(<a href="/school/{{ round['school_id_'] }}">{{ round['school_name'] }}</a>){% endif %}
+  {% if round['opponent'] %}&middot; vs {{ round['opponent'] }}{% endif %}
+  {% if round['judge'] %}&middot; judge {{ round['judge'] }}{% endif %}
+  {% if round['round_date'] %}&middot; {{ round['round_date'] }}{% endif %}
+</p>
+
+{% if round['report'] %}
+<h2 class="h-quiet">Round report</h2>
+<blockquote class="report">{{ round['report'] }}</blockquote>
+{% endif %}
+
+{% if cards %}
+<h2 class="h-quiet">Speech document ({{ cards|length }} entries)</h2>
+<nav class="doc-toc meta" aria-label="Jump to card">
+  {% for v in cards %}<a href="#doc-card-{{ v['ordinal'] }}">{{ loop.index }}</a>{{ ' ' }}{% endfor %}
+</nav>
+<ol class="doc-cards">
+  {% for v in cards %}
+  <li id="doc-card-{{ v['ordinal'] }}">
+    {% if v['pocket'] or v['hat'] or v['block'] %}
+    <p class="meta doc-path">{{ [v['pocket'], v['hat'], v['block']]|select|join(' / ') }}</p>
+    {% endif %}
+    <h3 class="tag"><a href="/card/{{ v['card_id'] }}">{{ v['tag'] or '(untagged card)' }}</a></h3>
+    <p class="citeline"><strong class="shortcite">{{ v['cite'] or '' }}</strong>
+      {% if v['fullcite'] %}<span class="fullcite">{{ v['fullcite'] }}</span>{% endif %}</p>
+    {% if v['markup_safe'] %}<div class="body">{{ v['markup_safe']|safe }}</div>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="meta">No parsed document is attached to this round.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ team['display_name'] or team['name'] }} &middot; PF card search{% endblock %}
+{% block content %}
+<h1>{{ team['display_name'] or team['name'] }}</h1>
+<p class="meta">{% if team['school_name'] %}<a href="/school/{{ team['school_id_'] }}">{{ team['school_name'] }}</a> &middot; {% endif %}{{ rounds|length }} round{{ '' if rounds|length == 1 else 's' }} on record</p>
+
+{% if rounds %}
+<h2 class="h-quiet">Rounds</h2>
+<ul class="ruled">
+  {% for r in rounds %}
+  <li><a href="/round/{{ r['id'] }}">{{ r['tournament'] or 'unknown tournament' }} {{ r['round_label'] or '' }}</a>
+    <span class="meta">{{ r['side']|side }}{% if r['opponent'] %} vs {{ r['opponent'] }}{% endif %}{% if r['round_date'] %} &middot; {{ r['round_date'] }}{% endif %}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if groups %}
+{% for topic_code, cards in groups.items() %}
+<h2 class="h-quiet">{% if topic_code != 'Unassigned' %}<a href="/topic/{{ topic_code }}">{{ topic_code }}</a>{% else %}Unassigned{% endif %}</h2>
+<ul class="ruled">
+  {% for c in cards %}
+  <li><a href="/card/{{ c['id'] }}">{{ c['tag'] or '(untagged card)' }}</a>
+    <span class="meta">{{ c['cite'] or '' }}</span></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% else %}
+<p class="meta">No disclosed cards from this team are in the index.</p>
+{% endif %}
+{% endblock %}

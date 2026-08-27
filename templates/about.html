@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}About &middot; PF card search{% endblock %}
+{% block content %}
+<h1>About this index</h1>
+
+<h2 class="h-quiet">What it covers, honestly</h2>
+<p>This index covers <strong>Public Forum evidence disclosed on openCaselist</strong>,
+which is most of the national-circuit corpus from roughly the mid-2010s onward.
+It is not every card ever cut. Local-circuit teams that do not disclose are
+invisible to this tool, as they are to any tool built on the wiki. Pre-openCaselist
+archives are out of scope for this version. Precision about coverage is a feature.</p>
+<p class="meta">Currently indexed: {{ stats.cards }} canonical cards from
+{{ stats.teams }} teams at {{ stats.schools }} schools, seasons {{ stats.seasons_covered }}.</p>
+
+<h2 class="h-quiet">Credits</h2>
+<p>This project exists because other people did the hard part.</p>
+<ul class="ruled">
+  <li>The <a href="https://huggingface.co/datasets/Yusuf5/OpenCaselist" rel="noopener">Yusuf5/OpenCaselist</a>
+    research dataset (MIT license) supplies the bulk historical corpus, parsed from
+    the .docx files uploaded to openCaselist.</li>
+  <li><a href="https://opencaselist.com" rel="noopener">openCaselist</a>, the community-run
+    disclosure wiki maintained by Ashtar Communications, is the source of everything here.
+    It is open source at
+    <a href="https://github.com/ashtarcommunications/caselist" rel="noopener">ashtarcommunications/caselist</a>.</li>
+  <li>The <a href="https://docs.paperlessdebate.com/verbatim/debating-paperless/caselist" rel="noopener">Verbatim
+    documentation</a> defines the speech-document conventions the parser follows.</li>
+</ul>
+
+<h2 class="h-quiet">Data and licenses</h2>
+<p class="meta">Card bodies are excerpts from copyrighted articles, papers, and books,
+redistributed inside the debate community by established norm. This deployment is
+private by default and binds to localhost. Debater names arrive truncated to two
+characters in the research dataset and are kept that way. Cites are displayed and
+exported exactly as the original cutter disclosed them, never restamped.</p>
+
+<h2 class="h-quiet">Other card-search tools</h2>
+<p class="meta">Comparisons intentionally omitted. Feature claims about other tools
+belong in copy only after verifying them firsthand.</p>
+{% endblock %}

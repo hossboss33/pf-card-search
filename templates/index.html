@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}PF card search{% endblock %}
+{% block content %}
+<section class="searchbar">
+  <form action="/search" method="get" id="searchform" role="search">
+    <label class="visually-hidden" for="q">Search cards</label>
+    <input id="q" name="q" type="search" value="{{ q }}" autocomplete="off"
+      spellcheck="false"
+      placeholder="grid reliability topic:present side:con cite:kessler">
+    <label class="visually-hidden" for="topic">Topic</label>
+    <select id="topic" name="topic">
+      <option value="">All topics</option>
+      {%- for group in topic_groups %}
+      <optgroup label="{{ group.label }}">
+        {%- for t in group.topics %}
+        <option value="{{ t.code }}" {% if t.code == topic %}selected{% endif %}>{{ t.code }} &middot; {{ t.slot_label }} &middot; {{ t.card_count }} cards</option>
+        {%- endfor %}
+      </optgroup>
+      {%- endfor %}
+    </select>
+    <button type="submit">Search</button>
+  </form>
+  <p id="searchmeta" class="meta" aria-live="polite">{% if result %}{{ result.total }} results &middot; {{ '%.0f'|format(result.elapsed_ms) }} ms{% endif %}</p>
+</section>
+
+<section id="results" aria-label="Search results">
+{% if result %}{% include "results.html" %}{% endif %}
+</section>
+
+{% if result and result.total > page_size %}
+<nav class="pager meta" aria-label="Result pages">
+  {% if page_no > 1 %}<a href="/search?q={{ q|urlencode }}&amp;topic={{ topic|urlencode }}&amp;page={{ page_no - 1 }}">Previous page</a>{% endif %}
+  <span>page {{ page_no }}</span>
+  {% if page_no * page_size < result.total %}<a href="/search?q={{ q|urlencode }}&amp;topic={{ topic|urlencode }}&amp;page={{ page_no + 1 }}">Next page</a>{% endif %}
+</nav>
+{% endif %}
+
+{% if not result %}
+<section class="empty" aria-label="Corpus overview">
+  <table class="ruled stats-table">
+    <caption>What this index holds</caption>
+    <tbody>
+      <tr><th scope="row">Canonical cards</th><td>{{ stats.cards }}</td></tr>
+      <tr><th scope="row">Teams</th><td>{{ stats.teams }}</td></tr>
+      <tr><th scope="row">Schools</th><td>{{ stats.schools }}</td></tr>
+      <tr><th scope="row">Seasons covered</th><td>{{ stats.seasons_covered }}</td></tr>
+    </tbody>
+  </table>
+  {% if current_topic %}
+  <div class="current-topic">
+    <h2 class="h-quiet">Current topic</h2>
+    <p><a href="/topic/{{ current_topic['code'] }}">{{ current_topic['code'] }}</a> &middot; {{ current_topic['resolution'] }}</p>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

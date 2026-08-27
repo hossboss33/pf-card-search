@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Card boxes &middot; PF card search{% endblock %}
+{% block content %}
+<h1>Card boxes</h1>
+<p class="meta">Local, single-user collections. Add cards from any card page; download a whole box as one .docx.</p>
+
+{% if boxes %}
+<ul class="ruled">
+  {% for b in boxes %}
+  <li><a href="/boxes/{{ b['id'] }}">{{ b['name'] }}</a>
+    <span class="meta">{{ b['member_count'] }} card{{ '' if b['member_count'] == 1 else 's' }}</span></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="meta">No boxes yet.</p>
+{% endif %}
+
+<h2 class="h-quiet">Create a box</h2>
+<form method="post" action="/boxes" class="inline-form">
+  <label for="box-name" class="visually-hidden">Box name</label>
+  <input id="box-name" name="name" type="text" required>
+  <button type="submit">Create box</button>
+</form>
+
+<h2 class="h-quiet">Import a box</h2>
+<form method="post" action="/boxes/import">
+  <label for="box-payload" class="meta">Paste a box export (JSON)</label>
+  <textarea id="box-payload" name="payload" rows="4" cols="60"></textarea>
+  <div><button type="submit">Import box</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% for h in result.hits %}
+<article class="result" data-id="{{ h.card_id }}" tabindex="-1">
+  <h3 class="tag"><a href="/card/{{ h.card_id }}">{{ h.tag or '(untagged card)' }}</a></h3>
+  <p class="citeline">
+    {%- if h.cite %}<span class="shortcite">{{ h.cite }}</span>{% endif %}
+    <span class="meta">
+      &middot; read by {{ h.team_count }} team{{ '' if h.team_count == 1 else 's' }}
+      &middot; {{ h.school_count }} school{{ '' if h.school_count == 1 else 's' }}
+      {%- for c in h.topic_codes %} &middot; <a href="/topic/{{ c }}">{{ c }}</a>{% endfor %}
+      {%- if h.source_pub_date %} &middot; {{ h.source_pub_date }}{% endif %}
+      {%- if h.is_analytic %} &middot; analytic{% endif %}
+      {%- for f in hit_flags.get(h.card_id, []) %} <span class="glyph" title="{{ f.label }}: {{ f.detail }}">{{ f.code }}</span>{% endfor %}
+    </span>
+  </p>
+  {% if h.snippet_html %}<p class="snippet">{{ h.snippet_html|safe }}</p>{% endif %}
+</article>
+{% endfor %}

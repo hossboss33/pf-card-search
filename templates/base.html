@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}PF card search{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header no-print">
+  <nav aria-label="Main">
+    <a class="brand" href="/">PF card search</a>
+    <a href="/authors">Authors</a>
+    <a href="/boxes">Boxes</a>
+    <a href="/stats">Stats</a>
+    <a href="/about">About</a>
+  </nav>
+  <div class="hl-setting" role="group" aria-label="Highlight color">
+    <span class="hl-label">Highlight</span>
+    {%- for name, label, hexv in hl_colors %}
+    <button type="button" class="swatch" data-hl-name="{{ name }}"
+      style="background:{{ hexv }}" title="{{ label }}"
+      aria-label="Set highlight color to {{ label|lower }}"></button>
+    {%- endfor %}
+  </div>
+</header>
+<main id="main">
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer no-print">
+  <p class="keys">Keys: <kbd>/</kbd> focus search &middot; <kbd>j</kbd> <kbd>k</kbd> or arrows move selection &middot; <kbd>Enter</kbd> open &middot; <kbd>y</kbd> copy spoken text &middot; <kbd>d</kbd> download .docx &middot; <kbd>f</kbd> focus filters</p>
+  <p class="meta">A local index of Public Forum evidence disclosed on openCaselist. <a href="/about">Coverage and credits</a></p>
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

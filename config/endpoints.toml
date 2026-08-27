@@ -1,0 +1,244 @@
+# openCaselist API endpoints — transcribed, not invented (spec §2.2, §12 items 1-3).
+#
+# Primary source: the live OpenAPI 3.0.2 spec served at
+#   https://api.opencaselist.com/v1/docs
+# (fetched 2026-08-27; that URL returns the raw OpenAPI JSON itself — the repo
+# README confirms: "That URL is running Swagger UI, pointing to
+# https://api.opencaselist.com/v1/docs, which is the raw version of the spec.")
+#
+# Cross-checked against the server's route registry:
+#   https://raw.githubusercontent.com/ashtarcommunications/caselist/master/server/v1/routes/paths.js
+# (fetched 2026-08-27; every path below appears verbatim in both sources.)
+#
+# Path templates use {curly} placeholders exactly as the OpenAPI spec writes them.
+# All paths are relative to api_base. See docs/api_verify.md for the full
+# verification narrative, auth flow, and rate-limit posture.
+
+[meta]
+api_base = "https://api.opencaselist.com/v1"
+openapi_version = "3.0.2"
+api_title = "Caselist API v1"
+spec_url = "https://api.opencaselist.com/v1/docs"
+repo_routes_url = "https://github.com/ashtarcommunications/caselist/tree/master/server/v1/routes"
+fetched = "2026-08-27"
+
+[auth]
+# OpenAPI components.securitySchemes (from https://api.opencaselist.com/v1/docs):
+#   "cookie": { "type": "apiKey", "in": "cookie", "name": "caselist_token" }
+# Global security: [{"cookie": []}] — every endpoint below except /login and
+# /status requires the caselist_token cookie.
+# The login response body ALSO returns the same value as "token"; the server
+# sets it via Set-Cookie (see [endpoints.login]). Session lifetime: 2 weeks
+# server-side; cookie is a session cookie unless remember=true AND the account
+# is "trusted" (then maxAge = 14 days). Source:
+# https://raw.githubusercontent.com/ashtarcommunications/caselist/master/server/v1/controllers/login/postLogin.js
+scheme = "apiKey"
+location = "cookie"
+cookie_name = "caselist_token"
+verified = true
+
+# --------------------------------------------------------------------------
+# Auth flow
+# --------------------------------------------------------------------------
+
+[endpoints.login]
+# Source: https://api.opencaselist.com/v1/docs  paths./login.post
+# and server/v1/controllers/login/postLogin.js (repo master, fetched 2026-08-27).
+# Body schema "Login": { username: string, password: string, remember: boolean }.
+# These are the user's TABROOM credentials; the server forwards them to
+# Tabroom's login endpoint and mints its own session (see docs/api_verify.md).
+# 201 response JSON includes: message, token, expires (ISO), trusted, userId, admin.
+# Set-Cookie: caselist_token=<nonce> (plus caselist_user_id, caselist_trusted).
+# Rate limit: 20 login attempts/minute per user or IP (429 after).
+method = "POST"
+path = "/login"
+body_params = ["username", "password", "remember"]
+auth_required = false
+rate_limit = "20/minute"
+verified = true
+
+# --------------------------------------------------------------------------
+# Enumeration: caselists -> schools -> teams -> rounds/cites
+# --------------------------------------------------------------------------
+
+[endpoints.caselists]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists.get
+# "Returns list of caselists". Optional query param archived (boolean):
+# "Whether to return archived caselists".
+# Response: array of Caselist { caselist_id, slug, name, event, year, archived }.
+# NOTE: there is NO server-side event filter — PF selection must be done
+# client-side on the returned `event` field. The exact event value used for
+# PF rows ("pf"?) is NOT verified; inspect the live response during M4.
+method = "GET"
+path = "/caselists"
+query_params = ["archived"]
+auth_required = true
+verified = true
+
+[endpoints.caselist]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}.get
+# "Returns a school" (sic — the spec's own summary is mislabeled; it returns a
+# single caselist). Path param caselist = caselist slug/name (string).
+method = "GET"
+path = "/caselists/{caselist}"
+path_params = ["caselist"]
+auth_required = true
+verified = true
+
+[endpoints.schools]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}/schools.get
+# "Returns list of schools in a caselist".
+# Response: array of School { name, displayName, state }.
+method = "GET"
+path = "/caselists/{caselist}/schools"
+path_params = ["caselist"]
+auth_required = true
+verified = true
+
+[endpoints.school]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}/schools/{school}.get
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}"
+path_params = ["caselist", "school"]
+auth_required = true
+verified = true
+
+[endpoints.teams]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}/schools/{school}/teams.get
+# "Returns list of teams in a school".
+# Response: array of Team { name, display_name, notes, debater1_first,
+# debater1_last, ... debater4_last, *_student_id }.
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}/teams"
+path_params = ["caselist", "school"]
+auth_required = true
+verified = true
+
+[endpoints.team]
+# Source: https://api.opencaselist.com/v1/docs  paths./...teams/{team}.get
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}/teams/{team}"
+path_params = ["caselist", "school", "team"]
+auth_required = true
+verified = true
+
+[endpoints.rounds]
+# Source: https://api.opencaselist.com/v1/docs  paths./...teams/{team}/rounds.get
+# and server/v1/controllers/rounds/getRounds.js (SELECT R.* FROM rounds ...).
+# "Returns list of rounds for a team". Optional query param side (string):
+# "Which side to return rounds for".
+# Declared response schema Round: { tournament, side, round, opponent, judge,
+# report, tourn_id, external_id } — but the controller returns R.* from the
+# rounds table, which ALSO includes `opensource` (relative path of the
+# uploaded open-source file; confirmed by controllers/rounds/postRound.js
+# "INSERT INTO rounds (..., opensource, ...)" and by the Recent schema's
+# `opensource: string` field). Feed rounds[].opensource to [endpoints.download].
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}/teams/{team}/rounds"
+path_params = ["caselist", "school", "team"]
+query_params = ["side"]
+auth_required = true
+verified = true
+
+[endpoints.round]
+# Source: https://api.opencaselist.com/v1/docs  paths./...rounds/{round}.get
+# "Returns a single round".
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}/teams/{team}/rounds/{round}"
+path_params = ["caselist", "school", "team", "round"]
+auth_required = true
+verified = true
+
+[endpoints.cites]
+# Source: https://api.opencaselist.com/v1/docs  paths./...teams/{team}/cites.get
+# "Returns list of cites for a team". Optional query param side (string).
+# Response: array of Cite { cite_id, round_id (required), title, cites }.
+# `cites` is the pasted cite text — the lossy fallback record per spec §2.2
+# (fidelity='cites_only' when a round has no open-source doc).
+method = "GET"
+path = "/caselists/{caselist}/schools/{school}/teams/{team}/cites"
+path_params = ["caselist", "school", "team"]
+query_params = ["side"]
+auth_required = true
+verified = true
+
+# --------------------------------------------------------------------------
+# Downloads
+# --------------------------------------------------------------------------
+
+[endpoints.download]
+# Source: https://api.opencaselist.com/v1/docs  paths./download.get
+# and server/v1/controllers/download/getDownload.js.
+# "Downloads a file". Required query param path (string): "Which file to
+# download" — pass a round's `opensource` value verbatim. Serves the file from
+# the server's upload dir; 404 if missing; 400 if path contains '..' or starts
+# with '/'. Rate limits (from getDownload.js): 10 downloads/minute per
+# user/IP, and 5/day for paths containing 'weekly' (bulk archives).
+method = "GET"
+path = "/download"
+query_params = ["path"]
+auth_required = true
+rate_limit = "10/minute; weekly archives 5/day"
+verified = true
+
+[endpoints.bulk_downloads]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}/downloads.get
+# and server/v1/controllers/caselists/getBulkDownloads.js.
+# "Returns bulk downloads in a caselist": array of Download { name, url }.
+# The urls are DIRECT S3 links ("https://<bucket>.<endpoint>/weekly/<caselist>/<file>.zip")
+# to weekly zip archives of the caselist (built by a cron job at midnight
+# Tuesdays per the repo README). This is the site's own bulk/archive offering
+# (spec §12.3) — prefer it over per-round crawling for season backfill.
+method = "GET"
+path = "/caselists/{caselist}/downloads"
+path_params = ["caselist"]
+auth_required = true
+verified = true
+
+# --------------------------------------------------------------------------
+# Extras confirmed in the same spec (useful for weekly sync; not required by §2.2)
+# --------------------------------------------------------------------------
+
+[endpoints.recent]
+# Source: https://api.opencaselist.com/v1/docs  paths./caselists/{caselist}/recent.get
+# "Returns recent modifications in a caselist". Response schema Recent:
+# { team_id, side, tournament, round, opponent, opensource, team_name,
+#   team_display_name, school_name, school_display_name, updated_at }.
+# Ideal for the weekly in-season sync delta.
+method = "GET"
+path = "/caselists/{caselist}/recent"
+path_params = ["caselist"]
+auth_required = true
+verified = true
+
+[endpoints.status]
+# Source: https://api.opencaselist.com/v1/docs  paths./status.get
+# "Responds with a 200 if up". No auth. Use as the sync preflight check.
+method = "GET"
+path = "/status"
+auth_required = false
+verified = true
+
+[endpoints.search]
+# Source: https://api.opencaselist.com/v1/docs  paths./search.get
+# Required query params: q (search query), shard ("Shard to search in").
+# Response SearchResult { id, shard, content, path }. Valid shard values are
+# NOT documented in the spec and were not verified (would require an
+# authenticated data request, which this research pass never makes).
+method = "GET"
+path = "/search"
+query_params = ["q", "shard"]
+auth_required = true
+verified = false
+
+[endpoints.openev]
+# Source: https://api.opencaselist.com/v1/docs  paths./openev.get
+# "Returns files for an open evidence year". Optional query param year (integer).
+# Response: array of File { openev_id, title, path, year, camp, lab, tags,
+# file, filename }. Relevant to the spec §9 backlog item (Open Evidence camp
+# files); path presumably feeds /download but that hand-off was not exercised.
+method = "GET"
+path = "/openev"
+query_params = ["year"]
+auth_required = true
+verified = false
