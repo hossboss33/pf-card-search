@@ -31,6 +31,14 @@ jobs:
           # .nojekyll keeps Pages from mangling underscore paths and lets
           # every asset (wasm, sqlite) through untouched.
           touch site/.nojekyll
+          # Version-stamp asset URLs with the commit SHA so a cached HTML page
+          # can only ever load the assets it was built with. Without this, a
+          # 10-minute-stale app.js paired with a fresh db/config.json requests
+          # chunk names that no longer exist and the site hard-fails during
+          # every rollout.
+          V="${GITHUB_SHA::10}"
+          sed -i "s|src=\"\([^\"]*\.js\)\"|src=\"\1?v=$V\"|g; s|href=\"style.css\"|href=\"style.css?v=$V\"|g" site/index.html
+          grep -n "?v=$V" site/index.html | head -12
           ls -la site/
           du -sh site/
       - uses: actions/upload-pages-artifact@v3

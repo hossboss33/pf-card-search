@@ -810,8 +810,18 @@ def build_site(db=DEFAULT_DB, out=DEFAULT_OUT, *, include_analytics: bool = Fals
     digest = hashlib.sha256(out_path.read_bytes()).hexdigest()[:10]
     stem = out_path.name.split(".")[0]
     versioned = out_path.parent / ("%s-%s.sqlite" % (stem, digest))
-    for stale in out_path.parent.glob("%s-*.sqlite*" % stem):
-        stale.unlink()
+    # Keep the newest PREVIOUS generation alive: pages cached for up to ten
+    # minutes still reference it during a rollout. Only older ones go.
+    gens = {}
+    for f in out_path.parent.glob("%s-*.sqlite*" % stem):
+        g = f.name.split(".sqlite")[0]
+        gens.setdefault(g, []).append(f)
+    if gens:
+        newest = max(gens, key=lambda g: max(f.stat().st_mtime for f in gens[g]))
+        for g, files in gens.items():
+            if g != newest:
+                for f in files:
+                    f.unlink()
     out_path.replace(versioned)
     out_path = versioned
     result["out"] = out_path
