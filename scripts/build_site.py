@@ -7,7 +7,7 @@ HTTP Range requests and pulls only the 1 KiB database pages a query touches,
 so a visitor never downloads the whole corpus. Two consequences drive every
 decision in this file:
 
-  1. **page_size = 1024.** It has to match the front end's requestChunkSize,
+  1. **page_size = 4096.** It has to divide the front end's requestChunkSize,
      and SQLite can only change page size on an empty database (or across a
      VACUUM), so the pragma is set before a single table exists.
   2. **One static file.** journal_mode = DELETE, never WAL: a -wal sidecar
@@ -75,8 +75,12 @@ if str(ROOT) not in sys.path:  # allow `python scripts/build_site.py`
 
 from carddb.topics import topic_status  # noqa: E402
 
-PAGE_SIZE = 1024
-REQUEST_CHUNK_SIZE = 1024
+# Latency, not bandwidth, dominates SQLite-over-HTTP: every page the query
+# touches is a network round trip. Measured on the deployed site, 1 KB pages
+# put a common FTS query at 17.3 s. Bigger pages fetch more useful bytes per
+# round trip; 4 KB pages with 32 KB reads cut the request count by ~32x.
+PAGE_SIZE = 4096
+REQUEST_CHUNK_SIZE = 32768
 BM25_WEIGHTS = (5.0, 3.0, 2.0, 1.0)  # spec §7.1: tag >> cite > block > body
 MAX_SHRINK_BUILDS = 10               # rebuilds allowed to land under --max-bytes
 

@@ -295,7 +295,7 @@ def test_fts_table_is_a_real_fts5_with_the_spec_tokenizer(built):
 
 def test_page_size_and_journal_mode_suit_range_requests(built):
     conn = built["conn"]
-    assert conn.execute("PRAGMA page_size").fetchone()[0] == 1024
+    assert conn.execute("PRAGMA page_size").fetchone()[0] == bs.PAGE_SIZE
     assert str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "delete"
     assert conn.execute("PRAGMA freelist_count").fetchone()[0] == 0  # VACUUMed
 
@@ -657,9 +657,13 @@ def test_config_json_describes_the_database(built):
     cfg = json.loads(Path(built["result"]["config"]).read_text(encoding="utf-8"))
     assert cfg["serverMode"] == "full"
     assert cfg["url"] == "db/cards.sqlite"
-    assert cfg["requestChunkSize"] == 1024
-    assert cfg["requestChunkSize"] == \
-        built["conn"].execute("PRAGMA page_size").fetchone()[0]
+    assert cfg["requestChunkSize"] == bs.REQUEST_CHUNK_SIZE
+    # every page the browser fetches must fit whole reads
+    assert bs.REQUEST_CHUNK_SIZE % bs.PAGE_SIZE == 0
+    # requestChunkSize need not equal page_size, but it must be a whole
+    # multiple of it so a fetched block never straddles a page boundary.
+    assert cfg["requestChunkSize"] % \
+        built["conn"].execute("PRAGMA page_size").fetchone()[0] == 0
     assert cfg["databaseLengthBytes"] == Path(built["result"]["out"]).stat().st_size
     assert cfg["card_count"] == 4
     assert cfg["analytic_count"] == 0
@@ -694,7 +698,7 @@ def test_rebuilding_the_same_index_gives_the_same_bytes(index, tmp_path):
 def test_verify_rejects_a_wrong_page_size(tmp_path):
     bad = tmp_path / "bad.sqlite"
     conn = sqlite3.connect(str(bad))
-    conn.execute("PRAGMA page_size = 4096")
+    conn.execute("PRAGMA page_size = 512")   # deliberately not PAGE_SIZE
     conn.execute("CREATE TABLE cards (id INTEGER PRIMARY KEY)")
     conn.commit()
     conn.close()
