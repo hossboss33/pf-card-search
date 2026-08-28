@@ -919,6 +919,24 @@
     );
   }
 
+  /* The database is read over HTTP a page at a time. The FIRST full-text
+     query has to pull in the FTS index structure, which measured ~13 s on the
+     deployed site; every query after it ran in ~1.5 s. So pay that cost here,
+     in the background, while the reader is still looking at the empty state —
+     by the time they type, the structural pages are cached.
+
+     Deliberately fire-and-forget: it must never block the UI, surface an
+     error, or disturb a real search the reader has already started. */
+  function warmIndex() {
+    if (!db) return;
+    setTimeout(function () {
+      if (state.q.trim()) return;        // reader beat us to it
+      db.query("SELECT rowid FROM card_fts WHERE card_fts MATCH ? LIMIT 1",
+               ["the"])
+        .catch(function () { /* warming is best-effort */ });
+    }, 300);
+  }
+
   function loadMeta() {
     return db.query("SELECT key, value FROM meta", []).then(function (rows) {
       for (var i = 0; i < rows.length; i++) meta[rows[i].key] = rows[i].value;
@@ -1059,6 +1077,7 @@
         renderAbout();
         el.searchmeta.textContent = "";
         route();
+        warmIndex();
       })
       .catch(function (err) {
         fail("The database at " + cfg.db + " could not be opened: " +
