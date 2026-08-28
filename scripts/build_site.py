@@ -60,6 +60,7 @@ without opening the database.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import sys
@@ -781,6 +782,21 @@ def build_site(db=DEFAULT_DB, out=DEFAULT_OUT, *, include_analytics: bool = Fals
                      result["subset_note"] or ""), log=log)
 
     checks = verify(out_path, log=log)
+
+    # Content-version the filename. Chunk contents change between builds; if
+    # the URLs stay the same, a browser that cached the old parts mixes them
+    # with new ones and SQLite reports "database disk image is malformed".
+    # Hashing the build into the name makes every deploy a fresh URL.
+    digest = hashlib.sha256(out_path.read_bytes()).hexdigest()[:10]
+    stem = out_path.name.split(".")[0]
+    versioned = out_path.parent / ("%s-%s.sqlite" % (stem, digest))
+    for stale in out_path.parent.glob("%s-*.sqlite*" % stem):
+        stale.unlink()
+    out_path.replace(versioned)
+    out_path = versioned
+    result["out"] = out_path
+    log("versioned database as %s" % out_path.name)
+
     chunks = 0
     if chunk_bytes and result["bytes"] > chunk_bytes:
         chunks = split_into_chunks(out_path, int(chunk_bytes), log=log)

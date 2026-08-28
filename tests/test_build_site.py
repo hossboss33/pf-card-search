@@ -26,6 +26,7 @@ import hashlib
 import importlib.util
 import json
 import random
+import re
 import sqlite3
 import subprocess
 import sys
@@ -428,8 +429,9 @@ def test_topic_codes_are_derived_when_the_index_never_materialized_them(
     conn.close()
 
     out = tmp_path / "db" / "cards.sqlite"
-    bs.build_site(db=stale, out=out, today=TODAY, built_at=BUILT_AT,
-                  log=lambda *a: None)
+    res = bs.build_site(db=stale, out=out, today=TODAY, built_at=BUILT_AT,
+                        log=lambda *a: None)
+    out = Path(res["out"])          # content-versioned filename
     conn = opened(out)
     try:
         got = {r["id"]: json.loads(r["topic_codes"])
@@ -656,7 +658,10 @@ def test_no_cap_ships_everything(built, index):
 def test_config_json_describes_the_database(built):
     cfg = json.loads(Path(built["result"]["config"]).read_text(encoding="utf-8"))
     assert cfg["serverMode"] == "full"
-    assert cfg["url"] == "db/cards.sqlite"
+    # The filename is content-versioned so cached chunks from a previous
+    # deploy can never be mixed with a new build's.
+    assert re.match(r"^db/cards-[0-9a-f]{10}\.sqlite$", cfg["url"]), cfg["url"]
+    assert cfg["url"] == "db/" + Path(built["result"]["out"]).name
     assert cfg["requestChunkSize"] == bs.REQUEST_CHUNK_SIZE
     # every page the browser fetches must fit whole reads
     assert bs.REQUEST_CHUNK_SIZE % bs.PAGE_SIZE == 0
@@ -721,6 +726,10 @@ def test_cli_builds_and_prints_size_and_count(index, tmp_path):
          "--out", str(out), "--max-cards", "3", "--today", "2098-10-15"],
         capture_output=True, text=True, cwd=str(ROOT))
     assert proc.returncode == 0, proc.stderr
+    # The built file is content-versioned; find it rather than assuming a name.
+    built_files = sorted(out.parent.glob("cards-*.sqlite"))
+    assert len(built_files) == 1, built_files
+    out = built_files[0]
     assert out.exists()
     assert (out.parent / "config.json").exists()
     assert "3 cards" in proc.stdout
