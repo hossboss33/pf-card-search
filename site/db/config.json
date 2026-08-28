@@ -1,10 +1,10 @@
 {
   "serverMode": "chunked",
-  "url": "db/cards-9ef0295f60.sqlite",
-  "db": "db/cards-9ef0295f60.sqlite",
-  "requestChunkSize": 65536,
-  "databaseLengthBytes": 368377856,
-  "urlPrefix": "db/cards-9ef0295f60.sqlite.",
+  "url": "db/cards-61740218b3.sqlite",
+  "db": "db/cards-61740218b3.sqlite",
+  "requestChunkSize": 32768,
+  "databaseLengthBytes": 376930304,
+  "urlPrefix": "db/cards-61740218b3.sqlite.",
   "urlSuffix": ".png",
   "suffixLength": 3,
   "serverChunkSize": 45000000,
@@ -17,7 +17,7 @@
   ],
   "topic_count": 38,
   "meta": {
-    "built_at": "2026-08-28T23:37:38Z",
+    "built_at": "2026-08-28T23:43:19Z",
     "card_count": "18818",
     "analytic_count": "0",
     "team_count": "735",
@@ -26,7 +26,7 @@
     "coverage_note": "This index covers PF evidence disclosed on openCaselist, which is most of the national-circuit corpus from roughly the mid-2010s onward. It is not every card ever cut: teams that do not disclose are invisible to any tool, pre-openCaselist archives are out of scope, and disclosure is uneven across regions and seasons.",
     "source_note": "Bulk history comes from the Yusuf5/OpenCaselist research dataset (MIT license) on Hugging Face; recent rounds come from openCaselist (opencaselist.com), which hosts the disclosures. Cards were cut and disclosed by the debaters credited in each citation; citations are reproduced exactly as disclosed and are never restamped."
   },
-  "built_at": "2026-08-28T23:37:38Z",
+  "built_at": "2026-08-28T23:43:19Z",
   "seasons_covered": "2017-2022",
   "coverage_note": "This index covers PF evidence disclosed on openCaselist, which is most of the national-circuit corpus from roughly the mid-2010s onward. It is not every card ever cut: teams that do not disclose are invisible to any tool, pre-openCaselist archives are out of scope, and disclosure is uneven across regions and seasons.",
   "source_note": "Bulk history comes from the Yusuf5/OpenCaselist research dataset (MIT license) on Hugging Face; recent rounds come from openCaselist (opencaselist.com), which hosts the disclosures. Cards were cut and disclosed by the debaters credited in each citation; citations are reproduced exactly as disclosed and are never restamped.",

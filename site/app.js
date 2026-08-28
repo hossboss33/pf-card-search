@@ -208,8 +208,10 @@
 
   function buildFilters(pq) {
     var where = [], params = [], i;
+    var onlyDefault = true;   // true while the only predicate is the default
+                              // analytics exclusion (see the fast path)
 
-    if (pq.filters.is_analytic) where.push("c.is_analytic = 1");
+    if (pq.filters.is_analytic) { where.push("c.is_analytic = 1"); onlyDefault = false; }
     else where.push("(c.is_analytic = 0 OR c.is_analytic IS NULL)");
 
     var codes = null;
@@ -229,45 +231,45 @@
     }
     if (codes !== null) {
       if (!codes.length) {
-        where.push("0");
+        onlyDefault = false; where.push("0");
       } else {
         var ors = [];
         for (i = 0; i < codes.length; i++) {
           ors.push("c.topic_codes LIKE ? ESCAPE '\\'");
           params.push(likeContains('"' + codes[i] + '"'));
         }
-        where.push("(" + ors.join(" OR ") + ")");
+        onlyDefault = false; where.push("(" + ors.join(" OR ") + ")");
       }
     }
 
     if (pq.filters.cite) {
       for (i = 0; i < pq.filters.cite.length; i++) {
-        where.push("(c.cite LIKE ? ESCAPE '\\' OR c.fullcite LIKE ? ESCAPE '\\')");
+        onlyDefault = false; where.push("(c.cite LIKE ? ESCAPE '\\' OR c.fullcite LIKE ? ESCAPE '\\')");
         params.push(likeContains(pq.filters.cite[i]));
         params.push(likeContains(pq.filters.cite[i]));
       }
     }
     if (pq.filters.year) {
-      where.push("c.cite LIKE ? ESCAPE '\\'");
+      onlyDefault = false; where.push("c.cite LIKE ? ESCAPE '\\'");
       params.push(likeContains(pq.filters.year));
     }
     if (pq.filters.block) {
-      where.push("c.block LIKE ? ESCAPE '\\'");
+      onlyDefault = false; where.push("c.block LIKE ? ESCAPE '\\'");
       params.push(likeContains(pq.filters.block));
     }
     if (pq.filters.before) {
-      where.push("c.source_pub_date IS NOT NULL AND c.source_pub_date < ?");
+      onlyDefault = false; where.push("c.source_pub_date IS NOT NULL AND c.source_pub_date < ?");
       params.push(pq.filters.before);
     }
     if (pq.filters.after) {
-      where.push("c.source_pub_date IS NOT NULL AND c.source_pub_date > ?");
+      onlyDefault = false; where.push("c.source_pub_date IS NOT NULL AND c.source_pub_date > ?");
       params.push(pq.filters.after);
     }
     if (pq.filters.min_reads !== undefined) {
-      where.push("COALESCE(c.team_count, 0) >= ?");
+      onlyDefault = false; where.push("COALESCE(c.team_count, 0) >= ?");
       params.push(pq.filters.min_reads);
     }
-    return { where: where, params: params };
+    return { where: where, params: params, onlyDefault: onlyDefault };
   }
 
   function orderBy(pq, hasFts) {
@@ -296,18 +298,32 @@
       var snip = "snippet(card_fts, 3, char(1), char(2), '…', 20) AS snip";
       var rank = "bm25(card_fts, 5.0, 3.0, 2.0, 1.0) AS rank";
 
-      if (!f.where.length && pq.sort === "relevance") {
+      /* The default analytics exclusion alone does not disqualify the fast
+         path: the shipped DB normally contains no analytics at all (the
+         builder excludes them), and the outer 30-row join re-applies the
+         predicate for builds that do ship them. */
+      if (f.onlyDefault && pq.sort === "relevance" && !pq.filters.is_analytic) {
         /* Fast path, and it matters a lot over HTTP: rank and page inside the
            FTS table first, then join `cards` for only the rows we display.
            The obvious "FROM card_fts JOIN cards ... LIMIT 30" reads a cards
            row for every match — 1,445 scattered page reads for a common term,
            each one a network round trip. This reads 30. The count likewise
            never touches `cards`. */
-        var inner = "SELECT rowid AS rid, " + snip + ", " + rank +
+        /* The inner query must touch ONLY the FTS index: card_fts is an
+           external-content table, so snippet() reads card bodies — inside
+           the ranking scan that means every match's body before LIMIT, and
+           re-entering the FTS table for the outer 30 makes the planner
+           recompute the MATCH for all of them (measured: raw ranking 53 ms,
+           the snippet()-bearing shapes 20+ s). So no snippet() here at all:
+           rank on index data, join `cards` for the 30 shown rows, and build
+           the snippet in JS from body_text, which those rows carry anyway. */
+        var inner = "SELECT rowid AS rid, " + rank +
                     " FROM card_fts WHERE card_fts MATCH ?" +
                     " ORDER BY rank LIMIT ? OFFSET ?";
-        sql = "SELECT " + COLS + ", f.snip AS snip, f.rank AS rank " +
+        sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
+              "'' AS snip, f.rank AS rank " +
               "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
+              "WHERE (c.is_analytic = 0 OR c.is_analytic IS NULL) " +
               "ORDER BY f.rank";
         params = [pq.fts, limit, offset];
         countSql = "SELECT count(*) AS n FROM card_fts WHERE card_fts MATCH ?";
@@ -346,6 +362,35 @@
     return esc(snip)
       .split(SNIP_OPEN).join("<b>")
       .split(SNIP_CLOSE).join("</b>");
+  }
+
+  /* Client-side snippet for the fast search path (which fetches body_text for
+     the shown rows instead of running snippet() — see buildSearchSql). Finds
+     the first query-term hit, slices ~20 words either side, and marks every
+     term occurrence with the same control characters snippetHtml expects. */
+  function makeSnippet(body, terms) {
+    if (!body) return "";
+    var words = body.split(/\s+/);
+    var lows = words.map(function (w) { return w.toLowerCase(); });
+    var stems = terms.map(function (t) { return t.toLowerCase().replace(/[^\w]/g, ""); })
+                     .filter(function (t) { return t.length > 1; });
+    var hit = -1;
+    for (var i = 0; i < lows.length && hit < 0; i++) {
+      for (var j = 0; j < stems.length; j++) {
+        if (lows[i].indexOf(stems[j]) === 0) { hit = i; break; }
+      }
+    }
+    if (hit < 0) hit = 0;
+    var a = Math.max(0, hit - 8), b = Math.min(words.length, hit + 32);
+    var out = [];
+    for (var k = a; k < b; k++) {
+      var marked = false;
+      for (var m = 0; m < stems.length; m++) {
+        if (lows[k].indexOf(stems[m]) === 0) { marked = true; break; }
+      }
+      out.push(marked ? SNIP_OPEN + words[k] + SNIP_CLOSE : words[k]);
+    }
+    return (a > 0 ? "…" : "") + out.join(" ") + (b < words.length ? "…" : "");
   }
 
   function topicList(json) {
@@ -410,6 +455,12 @@
 
     return db.query(built.sql, built.params).then(function (rows) {
       if (seq !== state.seq) return;
+      /* Fast-path rows carry body_text instead of a server-built snippet. */
+      for (var ri = 0; ri < rows.length; ri++) {
+        if (!rows[ri].snip && rows[ri].body_text) {
+          rows[ri].snip = makeSnippet(rows[ri].body_text, pq.pos);
+        }
+      }
       return db.query(built.countSql, built.countParams).then(function (cnt) {
         if (seq !== state.seq) return;
         var ms = Math.round(((window.performance || Date).now() - t0));
@@ -1073,6 +1124,8 @@
       .then(openDb)
       .then(function (worker) {
         db = worker;
+        window.__db = worker;   /* console/debug access; harmless */
+        window.__build = function (q) { var pq = parseQuery(q); return { pq: pq, built: buildSearchSql(pq, PAGE, 0) }; };
         return Promise.all([loadMeta(), loadTopics()]);
       })
       .then(function () {
