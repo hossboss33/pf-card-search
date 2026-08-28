@@ -86,8 +86,8 @@ from carddb.topics import topic_status  # noqa: E402
 # 32 KB reads). So both are raised together. 32 KB is SQLite's largest page
 # size short of the 64 KB maximum; ranking a common term reads its FTS doclist,
 # which at 4 KB pages meant ~100 round trips and ~15 s on the deployed site.
-PAGE_SIZE = 32768
-REQUEST_CHUNK_SIZE = 32768
+PAGE_SIZE = 65536
+REQUEST_CHUNK_SIZE = 65536
 BM25_WEIGHTS = (5.0, 3.0, 2.0, 1.0)  # spec §7.1: tag >> cite > block > body
 MAX_SHRINK_BUILDS = 10               # rebuilds allowed to land under --max-bytes
 
