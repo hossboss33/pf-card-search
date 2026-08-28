@@ -932,8 +932,12 @@
     if (!db) return;
     setTimeout(function () {
       if (state.q.trim()) return;        // reader beat us to it
+      /* A term that matches nothing: the query still walks the FTS segment
+         b-tree (the expensive structural pages), but 'the' would have pulled
+         a doclist covering nearly every card — megabytes — and every real
+         query queues behind this one in the worker. */
       db.query("SELECT rowid FROM card_fts WHERE card_fts MATCH ? LIMIT 1",
-               ["the"])
+               ["zzzqvwxk"])
         .catch(function () { /* warming is best-effort */ });
     }, 300);
   }
