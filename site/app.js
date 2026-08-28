@@ -295,6 +295,28 @@
     if (hasFts) {
       var snip = "snippet(card_fts, 3, char(1), char(2), '…', 20) AS snip";
       var rank = "bm25(card_fts, 5.0, 3.0, 2.0, 1.0) AS rank";
+
+      if (!f.where.length && pq.sort === "relevance") {
+        /* Fast path, and it matters a lot over HTTP: rank and page inside the
+           FTS table first, then join `cards` for only the rows we display.
+           The obvious "FROM card_fts JOIN cards ... LIMIT 30" reads a cards
+           row for every match — 1,445 scattered page reads for a common term,
+           each one a network round trip. This reads 30. The count likewise
+           never touches `cards`. */
+        var inner = "SELECT rowid AS rid, " + snip + ", " + rank +
+                    " FROM card_fts WHERE card_fts MATCH ?" +
+                    " ORDER BY rank LIMIT ? OFFSET ?";
+        sql = "SELECT " + COLS + ", f.snip AS snip, f.rank AS rank " +
+              "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
+              "ORDER BY f.rank";
+        params = [pq.fts, limit, offset];
+        countSql = "SELECT count(*) AS n FROM card_fts WHERE card_fts MATCH ?";
+        countParams = [pq.fts];
+        return { sql: sql, params: params,
+                 countSql: countSql, countParams: countParams };
+      }
+
+      /* Filtered or non-relevance sorts need `cards` in scope before LIMIT. */
       var from = "FROM card_fts JOIN cards c ON c.id = card_fts.rowid " +
                  "WHERE card_fts MATCH ?" +
                  (f.where.length ? " AND " + f.where.join(" AND ") : "");
@@ -382,6 +404,9 @@
     var pq = parseQuery(q);
     var built = buildSearchSql(pq, PAGE, offset);
     var t0 = (window.performance || Date).now();
+    /* The database is read over HTTP a page at a time, so a query has real
+       latency. Say so, rather than leaving the line blank and looking dead. */
+    if (!append) el.searchmeta.textContent = "Searching\u2026";
 
     return db.query(built.sql, built.params).then(function (rows) {
       if (seq !== state.seq) return;
