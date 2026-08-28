@@ -908,6 +908,7 @@
       /* The worker fetches urlPrefix + a zero-padded part index. */
       conf.urlPrefix = cfg.urlPrefix;
       conf.suffixLength = cfg.suffixLength || 3;
+      conf.urlSuffix = cfg.urlSuffix || "";
       conf.serverChunkSize = cfg.serverChunkSize;
       conf.databaseLengthBytes = cfg.databaseLengthBytes;
       delete conf.url;

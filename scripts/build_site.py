@@ -591,6 +591,15 @@ def verify(out_path: Path, log=_log) -> Dict[str, Any]:
 
 SUFFIX_LENGTH = 3          # cards.sqlite.000, .001, ... (worker pads to this)
 
+# Chunks are named ....000.png. They are not images. GitHub Pages gzips
+# application/octet-stream, and a range request against a gzip-encoded
+# response returns bytes from the compressed stream, so SQLite reads garbage
+# and reports "database disk image is malformed". Browsers always send
+# Accept-Encoding: gzip and cannot opt out (it is a forbidden header), so the
+# only lever is the extension. Probing a live deploy, .png/.jpg/.zip/.woff2
+# are served uncompressed while .bin is not. See site/vendor/PATCHES.md.
+CHUNK_SUFFIX = ".png"
+
 
 def split_into_chunks(out_path: Path, chunk_bytes: int, log=_log) -> int:
     """Split the built DB into byte-exact sequential parts.
@@ -608,15 +617,17 @@ def split_into_chunks(out_path: Path, chunk_bytes: int, log=_log) -> int:
             block = src.read(chunk_bytes)
             if not block and n:
                 break
-            part = out_path.parent / ("%s.%s" % (out_path.name,
-                                                 str(n).zfill(SUFFIX_LENGTH)))
+            part = out_path.parent / ("%s.%s%s" % (out_path.name,
+                                                   str(n).zfill(SUFFIX_LENGTH),
+                                                   CHUNK_SUFFIX))
             part.write_bytes(block)
             n += 1
             if len(block) < chunk_bytes:
                 break
     # Prove the split is lossless before we delete anything.
     joined = b"".join(
-        (out_path.parent / ("%s.%s" % (out_path.name, str(i).zfill(SUFFIX_LENGTH)))).read_bytes()
+        (out_path.parent / ("%s.%s%s" % (out_path.name, str(i).zfill(SUFFIX_LENGTH),
+                                         CHUNK_SUFFIX))).read_bytes()
         for i in range(n))
     if len(joined) != total:
         raise SystemExit("chunk split is not byte-exact: %d != %d"
@@ -642,6 +653,7 @@ def write_config(out_path: Path, meta: Dict[str, str], size: int,
     if chunks:
         # The worker builds each part's URL as urlPrefix + zero-padded index.
         cfg["urlPrefix"] = url + "."
+        cfg["urlSuffix"] = CHUNK_SUFFIX
         cfg["suffixLength"] = SUFFIX_LENGTH
         cfg["serverChunkSize"] = chunk_bytes
         cfg["chunkCount"] = chunks
