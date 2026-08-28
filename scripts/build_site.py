@@ -77,10 +77,14 @@ from carddb.topics import topic_status  # noqa: E402
 
 # Latency, not bandwidth, dominates SQLite-over-HTTP: every page the query
 # touches is a network round trip. Measured on the deployed site, 1 KB pages
-# put a common FTS query at 17.3 s. Bigger pages fetch more useful bytes per
-# round trip; 4 KB pages with 32 KB reads cut the request count by ~32x.
+# put a common FTS query at 17.3 s, so bigger pages are worth a lot.
+#
+# requestChunkSize must EQUAL page_size: sql.js-httpvfs warns "Chunk size does
+# not match page size" and the FTS5 vtable fails to construct when they differ
+# (observed live as "vtable constructor failed: card_fts" with 4 KB pages and
+# 32 KB reads). 4 KB is the largest safe page size, cutting round trips 4x.
 PAGE_SIZE = 4096
-REQUEST_CHUNK_SIZE = 32768
+REQUEST_CHUNK_SIZE = 4096
 BM25_WEIGHTS = (5.0, 3.0, 2.0, 1.0)  # spec §7.1: tag >> cite > block > body
 MAX_SHRINK_BUILDS = 10               # rebuilds allowed to land under --max-bytes
 
