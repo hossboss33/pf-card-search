@@ -33,6 +33,11 @@ def cmd_ingest(args, cfg):
     if args.source == "hf":
         from .hf_loader import ingest_hf
         ingest_hf(conn, cfg, stats, limit=args.limit)
+    elif args.source == "hf-remote":
+        # Streams PF rows out of the remote parquet shards; nothing but the
+        # SQLite index touches disk (spec §2.1, see carddb/hf_remote.py).
+        from .hf_remote import ingest_remote_pf
+        ingest_remote_pf(conn, cfg, stats)
     elif args.source == "api":
         from .api_sync import sync
         stats = sync(conn, cfg, caselist=args.caselist, since=args.since)
@@ -208,7 +213,8 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("ingest")
-    p.add_argument("--source", required=True, choices=["hf", "api", "private"])
+    p.add_argument("--source", required=True,
+                   choices=["hf", "hf-remote", "api", "private"])
     p.add_argument("--caselist")
     p.add_argument("--since")
     p.add_argument("--limit", type=int)

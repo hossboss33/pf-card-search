@@ -33,36 +33,51 @@ python3 -m venv .venv
 
 ## Getting the cards
 
-Two sources, in this order (spec §2):
+Two sources, in this order (spec §2). **Neither requires downloading the full
+27.6 GB dataset.**
 
-**1. Bulk history — the OpenCaselist research dataset (no scraping).**
-The [Yusuf5/OpenCaselist](https://huggingface.co/datasets/Yusuf5/OpenCaselist)
-dataset (MIT license) carries the 2013–2024 corpus pre-parsed.
-
-```bash
-.venv/bin/pip install datasets      # optional dependency, pulls pyarrow
-.venv/bin/python -m carddb ingest --source hf
-```
-
-The full dataset is ~27.6 GB in parquet — check your free disk before running
-the unfiltered load. `--limit N` ingests a bounded sample. The loader streams,
-filters to PF, logs the distinct caselist slugs it sees, and is idempotent:
-running it twice adds zero cards.
-
-**2. 2024 → today — the openCaselist API.**
-Requires your own Tabroom credentials in env vars (`TABROOM_USERNAME`,
-`TABROOM_PASSWORD`) and a contact email in `config.toml`. The sync is
-checkpointed, resumable, and rate-limited to 1 request/second with backoff —
-openCaselist is a community-run nonprofit; be polite to it (spec §0.2).
+**1. Bulk history — the OpenCaselist research dataset, streamed remotely.**
+[Yusuf5/OpenCaselist](https://huggingface.co/datasets/Yusuf5/OpenCaselist)
+(MIT) holds the pre-parsed corpus as 109 parquet shards. `carddb.hf_remote`
+queries those shards *in place* over HTTP range requests with DuckDB, pulling
+only `event='pf'` rows. Shards with no PF content are never fetched at all —
+`scripts/hf_census.py` reads just the `event` column of each shard first to
+find out which ones matter. Nothing lands on disk except the SQLite index.
 
 ```bash
-.venv/bin/python -m carddb sync
+.venv/bin/python scripts/hf_census.py          # once: which shards hold PF
+.venv/bin/python -m carddb ingest --source hf-remote
 ```
+
+This covers **PF seasons 2019-20 through 2022-23** (`hspf19`–`hspf22`).
+That is the dataset's full PF extent: PF disclosure on openCaselist begins
+with the site's 2019 launch, and the dataset ends at the 2022-23 caselists.
+
+A fully local load is still available (`--source hf`, needs `pip install
+datasets` and ~28 GB free) but there is no reason to prefer it.
+
+**2. 2023-24 → today — the openCaselist API.**
+Seasons `hspf23`, `hspf24`, `hspf25`, `hspf26` are **not** in any public
+dataset and must come from the site itself. **This requires your own Tabroom
+login.** openCaselist has no public read path: every data route is behind a
+`caselist_token` session cookie (`server/v1/helpers/auth.js`; only `/status`
+and `/login` are public). Supply credentials as environment variables — they
+are never stored in the repo:
+
+```bash
+export TABROOM_USERNAME=you@example.com
+export TABROOM_PASSWORD=...
+.venv/bin/python -m carddb sync --caselist hspf25
+```
+
+The sync is checkpointed, resumable, and capped at 1 request/second with
+backoff. openCaselist is a community-run nonprofit — be polite to it, and run
+bulk backfills overnight (spec §0.2).
 
 Then:
 
 ```bash
-.venv/bin/python -m carddb topics assign   # load data/topics.json, assign rounds to topics
+.venv/bin/python -m carddb topics assign   # load data/topics.json, assign rounds
 .venv/bin/python -m carddb dedup           # near-duplicate pass (layer 3)
 .venv/bin/python -m carddb stats
 ```
@@ -71,7 +86,7 @@ Then:
 
 | Verb | What it does |
 |---|---|
-| `ingest --source {hf\|api\|private}` | run a source through the one pipeline (fetch → raw store → parse → normalize/dedup/insert) |
+| `ingest --source {hf-remote\|hf\|api\|private}` | run a source through the one pipeline (fetch → raw store → parse → normalize/dedup/insert) |
 | `dedup` | MinHash/LSH near-duplicate pass + disagreement report |
 | `topics [assign]` | load `data/topics.json`, assign every round to a topic |
 | `serve` | the website, `127.0.0.1:8321` |

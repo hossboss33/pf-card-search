@@ -1,0 +1,7 @@
+{
+  "db": "db/cards.sqlite",
+  "requestChunkSize": 1024,
+  "pageSize": 30,
+  "repo": "https://github.com/hossboss33/pf-card-search",
+  "title": "PF card search"
+}
