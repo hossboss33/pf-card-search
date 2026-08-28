@@ -915,7 +915,7 @@
     }
     return httpvfs.createDbWorker(
       [{ from: "inline", config: conf }],
-      "vendor/sqlite.worker.js",
+      "vendor/sqlite.worker.v2.js",
       "vendor/sql-wasm.wasm"
     );
   }

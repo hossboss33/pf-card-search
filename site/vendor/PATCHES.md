@@ -1,4 +1,8 @@
-# Local patch to `sqlite.worker.js`
+# Local patch to `sqlite.worker.v2.js`
+
+(The file is named `.v2` because a browser holding the UNPATCHED worker from
+an earlier deploy under the old name kept requesting chunk URLs without the
+suffix and 404ing. A new filename cannot collide with any cached copy.)
 
 Vendored from `sql.js-httpvfs@0.8.12`, with one deliberate change.
 

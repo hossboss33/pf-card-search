@@ -1,6 +1,6 @@
 /* Minimal main-thread client for sql.js-httpvfs's sqlite.worker.js.
  *
- * Upstream ships two halves: the worker (vendored here as sqlite.worker.js,
+ * Upstream ships two halves: the worker (vendored here as sqlite.worker.v2.js,
  * MIT, github.com/phiresky/sql.js-httpvfs) and an ESM entry point that wraps
  * the worker with Comlink. Only the worker and sql-wasm.wasm were vendored, and
  * the entry point needs a bundler, so the small piece of Comlink wire protocol
