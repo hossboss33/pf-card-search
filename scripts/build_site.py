@@ -83,9 +83,11 @@ from carddb.topics import topic_status  # noqa: E402
 # requestChunkSize must EQUAL page_size: sql.js-httpvfs warns "Chunk size does
 # not match page size" and the FTS5 vtable fails to construct when they differ
 # (observed live as "vtable constructor failed: card_fts" with 4 KB pages and
-# 32 KB reads). 4 KB is the largest safe page size, cutting round trips 4x.
-PAGE_SIZE = 4096
-REQUEST_CHUNK_SIZE = 4096
+# 32 KB reads). So both are raised together. 32 KB is SQLite's largest page
+# size short of the 64 KB maximum; ranking a common term reads its FTS doclist,
+# which at 4 KB pages meant ~100 round trips and ~15 s on the deployed site.
+PAGE_SIZE = 32768
+REQUEST_CHUNK_SIZE = 32768
 BM25_WEIGHTS = (5.0, 3.0, 2.0, 1.0)  # spec §7.1: tag >> cite > block > body
 MAX_SHRINK_BUILDS = 10               # rebuilds allowed to land under --max-bytes
 
@@ -737,9 +739,15 @@ def build_site(db=DEFAULT_DB, out=DEFAULT_OUT, *, include_analytics: bool = Fals
         current_n = len(selection)
         builds = 0
 
-        while result["bytes"] > cap and current_n > 0 and builds < MAX_SHRINK_BUILDS:
+        # Never shrink to nothing. A database has a floor (header plus at
+        # least a page per table), so with a large page_size a small corpus
+        # cannot always reach an arbitrary cap. An empty index is useless to
+        # everyone; the honest outcome is the smallest real build plus a loud
+        # CANNOT FIT.
+        while (result["bytes"] > cap and current_n > 1
+               and builds < MAX_SHRINK_BUILDS):
             keep = int(current_n * (cap / float(result["bytes"])) * 0.98)
-            keep = max(0, min(keep, current_n - 1))
+            keep = max(1, min(keep, current_n - 1))
             log("build_site: %s > cap; trying the top %d of %d cards"
                 % (human_bytes(result["bytes"]), keep, current_n))
             result = build_once(selection[:keep], extra)
