@@ -45,6 +45,7 @@ def cmd_ingest(args, cfg):
         from .db import ledger_seen
         from .docx_parser import ParseFailure, convert_doc_to_docx, parse_docx
         from .ingest import attach_variant, finish_batch, insert_card, ledger_stamp
+        from .pdf_parser import parse_pdf
         from .rawstore import now_iso, record_document, store_bytes
         raw_root = resolve_path(cfg, "raw_store")
         for p in args.paths:
@@ -66,7 +67,10 @@ def cmd_ingest(args, cfg):
             try:
                 if path.suffix.lower() == ".doc":
                     path = convert_doc_to_docx(path)  # legacy .doc via soffice (§3.4)
-                parsed = parse_docx(path)
+                if path.suffix.lower() == ".pdf":
+                    parsed = parse_pdf(path)  # text-only cards; PdfFailure is a ParseFailure
+                else:
+                    parsed = parse_docx(path)
             except ParseFailure as e:
                 conn.execute(
                     "UPDATE documents SET parse_status='failed', parse_error=?, parsed_at=? WHERE id=?",
@@ -82,7 +86,7 @@ def cmd_ingest(args, cfg):
                 conn.commit()
                 continue
             for rec in parsed.cards:
-                rec.fidelity = "private"
+                rec.fidelity = "pdf" if path.suffix.lower() == ".pdf" else "private"
                 card_id, created = insert_card(conn, rec)
                 _, vcreated = attach_variant(conn, card_id, rec, doc_id, None)
                 stats.new_cards += int(created)

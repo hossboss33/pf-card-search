@@ -852,7 +852,14 @@ def _sync_opensource(conn, client, limiter, max_retries, api_base, endpoints,
             # legacy Word binary: convert via soffice, then parse the
             # converted bytes (spec §3.4)
             data = _convert_doc_bytes(data, fname)
-        parsed = parse_docx_bytes(data, filename=fname)
+        if fname.lower().endswith(".pdf"):
+            # PDF open-source file: text-only cards, honest fidelity
+            # (PdfFailure subclasses ParseFailure, so failures record
+            # parse_status='failed' below unchanged)
+            from .pdf_parser import parse_pdf_bytes
+            parsed = parse_pdf_bytes(data, filename=fname)
+        else:
+            parsed = parse_docx_bytes(data, filename=fname)
     except ParseFailure as e:
         conn.execute(
             "UPDATE documents SET parse_status='failed', parse_error=?, "
@@ -861,7 +868,7 @@ def _sync_opensource(conn, client, limiter, max_retries, api_base, endpoints,
         log.warning("parse failed for %s (%s)", opensource, e)
         return True
     for rec in parsed.cards:
-        rec.fidelity = "opensource"
+        rec.fidelity = "pdf" if fname.lower().endswith(".pdf") else "opensource"
         card_id, created = insert_card(conn, rec)
         _, vcreated = attach_variant(conn, card_id, rec, doc_id, round_db_id)
         stats.new_cards += int(created)
