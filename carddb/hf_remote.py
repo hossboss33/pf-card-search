@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
+import time
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional
 
@@ -40,7 +42,9 @@ BASE = ("https://huggingface.co/datasets/Yusuf5/OpenCaselist/resolve/"
         "refs%2Fconvert%2Fparquet/default/train")
 CENSUS = ROOT / "reports" / "shard_census.json"
 SHARD_SOURCE = "hf-shard"
+UA = "pf-card-search (personal research index; contact: caravellojake504@gmail.com)"
 FETCH_BATCH = 2000
+PACE_SECONDS = 5.0   # gap between shard downloads
 
 
 def load_census(path: Optional[Path] = None) -> List[int]:
@@ -67,11 +71,53 @@ def _connect():
     return con
 
 
-def iter_shard_pf_rows(con, shard: int) -> Iterator[dict]:
-    """Yield every PF row of one remote shard as a plain dict."""
+def _fetch_shard(shard: int, dest: Path, max_retries: int = 6) -> Path:
+    """Fetch one shard to a temp file, then delete it after reading.
+
+    These parquet files carry no column statistics, so a remote scan cannot
+    skip row groups and ends up pulling the whole file anyway — in thousands
+    of small, latency-bound range requests (measured: ~4.4 min/shard). One
+    sequential GET moves the same bytes ~5x faster.
+
+    Hugging Face rate-limits anonymous bulk reads, so this honours 429s with
+    exponential backoff and Retry-After rather than treating them as fatal.
+    """
+    import httpx
     url = f"{BASE}/{shard:04d}.parquet"
+    for attempt in range(max_retries):
+        try:
+            with httpx.stream("GET", url, follow_redirects=True, timeout=180.0,
+                              headers={"User-Agent": UA}) as r:
+                if r.status_code in (429, 500, 502, 503, 504):
+                    retry_after = r.headers.get("retry-after")
+                    wait = (float(retry_after) if retry_after
+                            and retry_after.isdigit()
+                            else min(120.0, 10.0 * (2 ** attempt)))
+                    logger.warning("shard %d: HTTP %d, backing off %.0fs "
+                                   "(attempt %d/%d)", shard, r.status_code,
+                                   wait, attempt + 1, max_retries)
+                    time.sleep(wait)
+                    continue
+                r.raise_for_status()
+                with open(dest, "wb") as fh:
+                    for chunk in r.iter_bytes(1 << 20):
+                        fh.write(chunk)
+                return dest
+        except (httpx.HTTPError, OSError) as exc:
+            wait = min(120.0, 10.0 * (2 ** attempt))
+            logger.warning("shard %d: %s, retrying in %.0fs (attempt %d/%d)",
+                           shard, type(exc).__name__, wait, attempt + 1, max_retries)
+            if dest.exists():
+                dest.unlink()
+            time.sleep(wait)
+    raise RuntimeError(f"shard {shard}: giving up after {max_retries} attempts")
+
+
+def iter_shard_pf_rows(con, shard: int, local: Optional[Path] = None) -> Iterator[dict]:
+    """Yield every PF row of one shard as a plain dict."""
+    src = str(local) if local else f"{BASE}/{shard:04d}.parquet"
     cur = con.execute(
-        "SELECT * FROM read_parquet(?) WHERE event = 'pf'", [url])
+        "SELECT * FROM read_parquet(?) WHERE event = 'pf'", [src])
     cols = [d[0] for d in cur.description]
     while True:
         rows = cur.fetchmany(FETCH_BATCH)
@@ -88,6 +134,7 @@ def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
     stats = stats or IngestStats()
     todo = shards if shards is not None else load_census(census_path)
     con = _connect()
+    failed_shards: List[int] = []
     logger.info("remote PF load: %d shards to process", len(todo))
     for n, shard in enumerate(todo, 1):
         if ledger_seen(conn, SHARD_SOURCE, str(shard)):
@@ -95,7 +142,19 @@ def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
                         n, len(todo), shard)
             continue
         before_cards, before_vars = stats.new_cards, stats.new_variants
-        rows = list(iter_shard_pf_rows(con, shard))
+        tmp = Path(tempfile.gettempdir()) / f"pfshard-{shard:04d}.parquet"
+        try:
+            _fetch_shard(shard, tmp)
+            rows = list(iter_shard_pf_rows(con, shard, local=tmp))
+        except Exception as exc:
+            # One unreachable shard must not lose the whole run; it stays
+            # unstamped in the ledger, so a rerun picks it up.
+            logger.error("shard %d failed, continuing: %s", shard, exc)
+            failed_shards.append(shard)
+            continue
+        finally:
+            if tmp.exists():
+                tmp.unlink()          # nothing accumulates on disk
         ingest_hf_rows(conn, rows, cfg, stats)
         # Stamp the shard only after its rows are committed by ingest_hf_rows,
         # so a crash mid-shard re-fetches that shard (its rows are ledgered
@@ -106,4 +165,8 @@ def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
                     n, len(todo), shard, len(rows),
                     stats.new_cards - before_cards,
                     stats.new_variants - before_vars)
+        time.sleep(PACE_SECONDS)   # be a good citizen on a shared CDN
+    if failed_shards:
+        logger.error("shards that did not load (rerun to retry): %s",
+                     failed_shards)
     return stats

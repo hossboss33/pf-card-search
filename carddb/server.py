@@ -35,6 +35,7 @@ from starlette.background import BackgroundTask
 
 from .a2 import a2_display, a2_target, argument_key
 from .config import ROOT, load_config, resolve_path
+from .connect import register_connect
 from .db import open_db
 from .rawstore import now_iso
 from .sanitize import sanitize_markup
@@ -986,5 +987,7 @@ def create_app(db_path=None, cfg: Optional[dict] = None) -> FastAPI:
     def about_page(request: Request,
                    conn: sqlite3.Connection = Depends(get_conn)):
         return render(request, "about.html", {"stats": _corpus_stats(conn)})
+
+    register_connect(app, templates)   # /connect, loopback-only (spec §0.4)
 
     return app

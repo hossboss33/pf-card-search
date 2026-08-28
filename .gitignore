@@ -6,6 +6,16 @@ data/*.sqlite-shm
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# The published site DB is the one exception: it IS the website's data and
+# must ship for GitHub Pages to serve it. Spec §0.4 keeps the *local* index
+# private; publishing it is the owner's deliberate choice.
+#
+# Only the CHUNKS ship. The monolithic cards.sqlite is ~320 MB, well over
+# GitHub's hard 100 MB per-file limit, and the browser never requests it —
+# sql.js-httpvfs reads the numbered parts instead.
+site/db/cards.sqlite
+!site/db/cards.sqlite.[0-9][0-9][0-9]
 backups/
 reports/
 

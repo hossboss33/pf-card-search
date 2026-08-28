@@ -82,9 +82,30 @@
     });
   }
 
+  function absolute(url) {
+    return new URL(url, location.href).toString();
+  }
+
   /* configs: [{ from: "inline", config: { serverMode: "full",
-   *             url: "db/cards.sqlite", requestChunkSize: 1024 } }] */
+   *             url: "db/cards.sqlite", requestChunkSize: 1024 } }]
+   *
+   * Every URL is made absolute against the page first. The worker resolves
+   * relative URLs against its own location (vendor/), not the page's, so a
+   * relative path would silently 404 into an HTML error body. */
   function createDbWorker(configs, workerUrl, wasmUrl) {
+    configs = configs.map(function (c) {
+      if (!c || !c.config) return c;
+      var cfg = {};
+      for (var k in c.config) {
+        if (Object.prototype.hasOwnProperty.call(c.config, k)) cfg[k] = c.config[k];
+      }
+      if (cfg.url) cfg.url = absolute(cfg.url);
+      if (cfg.urlPrefix) cfg.urlPrefix = absolute(cfg.urlPrefix);
+      return { from: c.from, config: cfg, virtualFilename: c.virtualFilename };
+    });
+    wasmUrl = absolute(wasmUrl);
+    workerUrl = absolute(workerUrl);
+
     var worker = new Worker(workerUrl);
     var fatal = null;
     worker.addEventListener("error", function (ev) {

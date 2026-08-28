@@ -1,7 +1,9 @@
-/* PF card search. One hand-written stylesheet. Spec 8.3-8.6.
+/* PF card search, public site. One hand-written stylesheet, no build step.
+   Copied from the local app's static/style.css (spec 8.3-8.6) and extended
+   for the static build; the tokens below are the spec's, unchanged.
    The look is the card: a Word speech doc, with quiet gray ruled chrome
    around it. Calibri everywhere; Carlito is the metric-compatible local
-   fallback bundled under static/fonts (SIL OFL). */
+   fallback bundled under site/fonts (SIL OFL). */
 
 @font-face {
   font-family: "Carlito";
@@ -245,4 +247,181 @@ textarea { width: 100%; max-width: 40rem; display: block; margin: 0.2rem 0; }
   body { max-width: none; padding: 0; }
   .card-doc { border: none; padding: 0; margin: 0; }
   a { color: var(--ink); text-decoration: none; }
+}
+
+/* ======================================================================
+   Static-site additions. Everything above is the local app's stylesheet.
+   Same tokens, same density; these rules cover the pieces that only the
+   browser-side build has (boot states, topic picker, about, deep links).
+   ====================================================================== */
+
+/* --- routed views: one document, three views ----------------------------- */
+[hidden] { display: none !important; }
+
+/* --- boot / failure notices ---------------------------------------------- */
+.notice {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.6rem 0.8rem;
+  margin: 1rem 0;
+  font-size: 13px;
+}
+.notice h2 { font-size: 15px; margin-bottom: 0.2rem; }
+.notice p { margin: 0.3rem 0; }
+.notice code {
+  font-family: var(--font);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0 0.2em;
+}
+.boot-line { color: var(--meta); font-size: 12px; margin: 0.6rem 0; }
+
+/* --- search controls ----------------------------------------------------- */
+.control-row {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  align-items: center; margin-top: 0.3rem;
+}
+.control-row label { color: var(--meta); font-size: 12px; }
+#topic { max-width: 32rem; }
+.help-toggle { font-size: 12px; }
+.syntax {
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: 0.5rem 0.8rem; margin: 0.4rem 0 0.2rem;
+  font-size: 13px;
+}
+.syntax dl { display: grid; grid-template-columns: 12rem 1fr; gap: 0.1rem 0.6rem; }
+.syntax dt { font-weight: 700; }
+.syntax dd { color: var(--meta); }
+
+/* --- results ------------------------------------------------------------- */
+.result .citeline { font-size: 13px; }
+.result .provenance-line { color: var(--meta); font-size: 12px; }
+.more-row { padding: 0.5rem 0.3rem; }
+
+/* --- back link ----------------------------------------------------------- */
+.backlink { display: block; margin-top: 0.8rem; font-size: 13px; }
+
+/* --- card view ----------------------------------------------------------- */
+.card-doc h1.tag { font-size: 17px; }
+.reading-note { color: var(--meta); font-size: 12px; margin-top: 0.4rem; }
+
+/* --- about --------------------------------------------------------------- */
+.about h1 { font-size: 19px; margin-top: 0.8rem; }
+.about h2 { font-size: 15px; }
+.about p, .about li { font-size: 13px; margin: 0.35rem 0; }
+.about ul { margin-left: 1.1rem; }
+.about ul.ruled { margin-left: 0; }
+
+/* --- topic groups on the about/topics view ------------------------------- */
+.topic-group { margin-bottom: 0.8rem; }
+
+/* Headings that survive inside a card body (a pocket or hat kept by the
+   parser) render at the card's own scale, not the browser's default. */
+.body h1, .body h2, .body h3, .body h4 {
+  font-size: 15px; font-weight: 700; margin: 0.4rem 0 0.2rem;
+}
+
+/* --- Recent seasons / connect ------------------------------------------ */
+
+.connect h2 { font-size: 15px; margin: 1.4em 0 .5em; }
+
+.connect-form {
+  border: 1px solid var(--rule);
+  padding: 1em 1.1em;
+  max-width: 46em;
+}
+
+/* The disclosure is load-bearing, not decoration: it must read before the
+   inputs and must not look like fine print. */
+.disclosure {
+  border-left: 3px solid var(--accent);
+  padding: .1em 0 .1em 1em;
+  margin: 0 0 1.2em;
+}
+.disclosure p { margin: .3em 0; }
+.disclosure ul { margin: .4em 0 .2em; padding-left: 1.2em; }
+.disclosure li { margin: .35em 0; }
+
+.connect .field { margin: .7em 0; }
+.connect label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: .2em;
+}
+.connect input[type="email"],
+.connect input[type="password"],
+.connect select {
+  font: inherit;
+  padding: .35em .4em;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  width: 100%;
+  max-width: 26em;
+  background: var(--paper);
+  color: var(--ink);
+}
+.connect .actions { margin: 1em 0 .4em; }
+.connect .actions button { margin-right: .6em; }
+
+.notice.ok   { border-left: 3px solid var(--accent); }
+.notice.warn { border-left: 3px solid #8a1f1f; }
+
+.live-round {
+  border-top: 1px solid var(--rule);
+  padding-top: .8em;
+  margin-top: 1.2em;
+}
+.live-round h3 { font-size: 14px; margin: 0 0 .3em; }
+.live-card { margin: .9em 0; }
+
+/* Roughly 8% of dataset rows carry an overlong `tag` (some debaters write
+   paragraph-length tags; in others the dataset's own parser put the cite or
+   the body in the tag field). Clamp the display so one bad row cannot blow
+   out the dense result list. The full text is always on the card page. */
+.result .tag a,
+.result .citeline {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.result .citeline { -webkit-line-clamp: 2; }
+
+/* --- Filters panel ------------------------------------------------------ */
+
+.filters {
+  border: 1px solid var(--rule);
+  padding: .8em 1em;
+  margin: .6em 0 .8em;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14em, 1fr));
+  gap: .6em 1.2em;
+}
+.filters .field { margin: 0; }
+.filters label { display: block; font-weight: bold; margin-bottom: .15em; }
+.filters input[type="date"],
+.filters input[type="text"],
+.filters input[type="number"],
+.filters select {
+  font: inherit;
+  width: 100%;
+  padding: .3em .35em;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.filters .checkfield { display: flex; align-items: center; gap: .45em; }
+.filters .checkfield label { font-weight: normal; margin: 0; }
+.filters .checkfield input { width: auto; }
+.filter-actions {
+  margin-top: .8em;
+  padding-top: .6em;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  gap: .8em;
+  flex-wrap: wrap;
 }

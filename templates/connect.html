@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Connect to openCaselist &middot; PF card search{% endblock %}
+{% block content %}
+<h1>Connect to openCaselist</h1>
+
+{% if blocked_reason %}
+<div class="legend">
+  <p><strong>{{ refusal_title }}</strong></p>
+  <p class="meta">Refused because {{ blocked_reason }}.</p>
+  <p>{{ refusal_body }}</p>
+</div>
+{% else %}
+
+<p>openCaselist requires a Tabroom account to read any disclosure, so the recent
+Public Forum seasons cannot be pulled without a login. These are
+<strong>your own</strong> Tabroom credentials, the ones you already use on
+tabroom.com. Never anyone else's, and never a shared or scraped account.</p>
+
+{% if notice %}<p class="meta">{{ notice }}</p>{% endif %}
+{% if error %}
+<div class="legend">
+  <p><strong>That did not work</strong></p>
+  <p class="meta">{{ error }}</p>
+</div>
+{% endif %}
+
+<h2 class="h-quiet">What happens to what you type here</h2>
+<div class="legend">
+  <ul>
+    <li>The username and password are POSTed over HTTPS straight to
+      <code>{{ api_base }}/login</code>, which is openCaselist's own login route.
+      Nothing else receives them.</li>
+    <li>They are held in memory in this server process, and nowhere else, so a
+      long sync can re-authenticate when its openCaselist session lapses. They
+      are never written to disk, never put in the database, never placed in a
+      URL, never written to a log line, and never sent back to this page.</li>
+    <li>The session cookie openCaselist returns is kept in the same
+      memory-only place.</li>
+    <li><strong>Disconnect</strong> clears both immediately. So does stopping
+      the server.</li>
+    <li>This page runs on localhost only. It refuses to answer on any other
+      address, because it takes a password.</li>
+  </ul>
+</div>
+
+{% if connected %}
+
+<h2 class="h-quiet">Connected</h2>
+<p>Signed in as {{ username }}{% if source == 'environment' %} from
+  <code>{{ username_env }}</code>{% endif %}, since {{ connected_at }}.</p>
+<form method="post" action="/connect/logout" class="inline-form">
+  <button type="submit">Disconnect</button>
+</form>
+
+<h2 class="h-quiet">Public Forum caselists this login can see</h2>
+{% if caselists %}
+<table class="ruled">
+  <caption>Slugs come from the API listing, never from guessed names.</caption>
+  <thead>
+    <tr><th>Season</th><th>Slug</th><th>Status</th><th>Sync</th></tr>
+  </thead>
+  <tbody>
+    {%- for c in caselists %}
+    <tr>
+      <td>{{ c.display_name }}</td>
+      <td><code>{{ c.slug }}</code></td>
+      <td class="meta">{{ 'archived' if c.archived else 'current' }}</td>
+      <td>
+        <form method="post" action="/connect/sync/{{ c.slug }}" class="inline-form">
+          <button type="submit"{% if running %} disabled{% endif %}>Sync this season</button>
+        </form>
+      </td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+<p class="meta">Each sync walks the API at one request per second, backs off on
+429 and 5xx, checkpoints every team so a crash resumes instead of re-requesting,
+and keeps every file it fetches. One season at a time. Start the long ones
+overnight.</p>
+{% else %}
+<p class="meta">The listing returned no Public Forum caselists.</p>
+{% endif %}
+
+<h2 class="h-quiet">Sync progress</h2>
+<div id="sync-status" data-poll="{{ 'on' if running else 'off' }}">
+  {% if job %}
+  <p><strong id="sync-caselist">{{ job.caselist }}</strong>
+    <span class="meta" id="sync-state">{{ 'running' if not job.done else 'done' }}</span></p>
+  <p id="sync-current">{{ job.current }}</p>
+  <p class="meta" id="sync-counts">units {{ job.counts.units }} &middot;
+    parsed {{ job.counts.parsed }} &middot; failed {{ job.counts.failed }} &middot;
+    new cards {{ job.counts.new_cards }} &middot;
+    new variants {{ job.counts.new_variants }}</p>
+  {% if job.error %}<p id="sync-error">{{ job.error }}</p>{% else %}<p id="sync-error"></p>{% endif %}
+  <ul class="ruled" id="sync-errors">
+    {%- for e in job.errors %}<li class="meta">{{ e }}</li>{%- endfor %}
+  </ul>
+  {% else %}
+  <p class="meta" id="sync-current">No sync has run in this process yet.</p>
+  <p class="meta" id="sync-counts"></p>
+  <p id="sync-error"></p>
+  <ul class="ruled" id="sync-errors"></ul>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById("sync-status");
+  if (!box || box.getAttribute("data-poll") !== "on") { return; }
+  var current = document.getElementById("sync-current");
+  var counts = document.getElementById("sync-counts");
+  var errline = document.getElementById("sync-error");
+  var errlist = document.getElementById("sync-errors");
+  var state = document.getElementById("sync-state");
+  function paint(s) {
+    var c = s.counts || {};
+    if (current) { current.textContent = s.current || ""; }
+    if (counts) {
+      counts.textContent = "units " + (c.units || 0) + " · parsed " +
+        (c.parsed || 0) + " · failed " + (c.failed || 0) +
+        " · new cards " + (c.new_cards || 0) + " · new variants " +
+        (c.new_variants || 0);
+    }
+    if (errline) { errline.textContent = s.error || ""; }
+    if (errlist) {
+      errlist.textContent = "";
+      (s.errors || []).forEach(function (e) {
+        var li = document.createElement("li");
+        li.className = "meta";
+        li.textContent = e;
+        errlist.appendChild(li);
+      });
+    }
+    if (state) { state.textContent = s.done ? "done" : "running"; }
+  }
+  function poll() {
+    fetch("/connect/status", { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (s) {
+        if (!s) { return; }
+        paint(s);
+        if (s.running) { window.setTimeout(poll, 2000); }
+        else { box.setAttribute("data-poll", "off"); }
+      })
+      .catch(function () { window.setTimeout(poll, 5000); });
+  }
+  window.setTimeout(poll, 1000);
+}());
+</script>
+
+{% else %}
+
+<h2 class="h-quiet">Tabroom login</h2>
+<form method="post" action="/connect" autocomplete="off">
+  <p>
+    <label for="tabroom-username">Tabroom username or email</label><br>
+    <input id="tabroom-username" name="username" type="text" size="36"
+      autocomplete="username" autocapitalize="none" spellcheck="false">
+  </p>
+  <p>
+    <label for="tabroom-password">Tabroom password</label><br>
+    <input id="tabroom-password" name="password" type="password" size="36"
+      autocomplete="current-password">
+  </p>
+  <p class="meta">Leave both fields empty to use the
+    <code>{{ username_env }}</code> and <code>{{ password_env }}</code>
+    environment variables instead. That is the same path
+    <code>python -m carddb sync</code> uses, and it is the better option if you
+    would rather not type a password into a browser at all.</p>
+  <p><button type="submit">Connect to openCaselist</button></p>
+</form>
+
+<h2 class="h-quiet">Why this exists</h2>
+<p class="meta">The public research dataset stops in 2024. The 2023-24 through
+2026-27 seasons exist only on openCaselist itself, behind a Tabroom login, and
+the open-source .docx files behind that login are what the parser turns into
+fully formatted cards. Connecting is optional: everything already indexed works
+without it.</p>
+
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PF card search</title>
+<meta name="description" content="Search Public Forum evidence disclosed on openCaselist. The index runs in your browser against a static SQLite file.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="visually-hidden" href="#main">Skip to content</a>
+
+<header class="site-header no-print">
+  <nav aria-label="Main">
+    <a class="brand" href="#/">PF card search</a>
+    <a href="#/">Search</a>
+    <a href="#/about">About</a>
+    <a href="#/connect">Recent seasons</a>
+    <a href="https://github.com/hossboss33/pf-card-search" rel="noopener">Source</a>
+  </nav>
+  <div class="hl-setting" role="group" aria-label="Highlight color">
+    <span class="hl-label">Highlight</span>
+    <button type="button" class="swatch" data-hl-name="green" style="background:#00FF00"
+      title="Bright green" aria-label="Set highlight color to bright green"></button>
+    <button type="button" class="swatch" data-hl-name="yellow" style="background:#FFFF00"
+      title="Yellow" aria-label="Set highlight color to yellow"></button>
+    <button type="button" class="swatch" data-hl-name="blue" style="background:#0000FF"
+      title="Blue" aria-label="Set highlight color to blue"></button>
+    <button type="button" class="swatch" data-hl-name="turquoise" style="background:#00FFFF"
+      title="Turquoise" aria-label="Set highlight color to turquoise"></button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- boot failure, shown only if the database cannot be opened -->
+  <section id="fatal" class="notice" hidden aria-live="assertive">
+    <h2>The card index did not load</h2>
+    <p id="fatal-detail">The database file could not be opened.</p>
+    <p>This site reads a static SQLite file over HTTP range requests. It needs a
+      browser with WebAssembly and Web Workers, and a host that serves partial
+      content. If you are viewing this from a <code>file://</code> path, serve the
+      folder over HTTP instead.</p>
+  </section>
+
+  <!-- ---------------- search view ---------------- -->
+  <section id="view-search">
+    <div class="searchbar">
+      <form id="searchform" role="search" autocomplete="off">
+        <label class="visually-hidden" for="q">Search cards</label>
+        <input id="q" name="q" type="search" spellcheck="false"
+          placeholder="grid reliability topic:present cite:kessler">
+        <button type="submit">Search</button>
+      </form>
+      <div class="control-row no-print">
+        <label for="topic">Topic</label>
+        <select id="topic">
+          <option value="">All topics</option>
+        </select>
+        <button type="button" id="filters-toggle" class="quiet-btn"
+          aria-expanded="false" aria-controls="filters">Filters</button>
+        <button type="button" id="help-toggle" class="quiet-btn help-toggle"
+          aria-expanded="false" aria-controls="syntax">Query syntax</button>
+      </div>
+      <div id="syntax" class="syntax no-print" hidden>
+        <dl>
+          <dt>grid reliability</dt><dd>both words, anywhere in the card</dd>
+          <dt>"interconnection queue"</dt><dd>exact phrase</dd>
+          <dt>-crypto</dt><dd>exclude cards containing the word</dd>
+          <dt>topic:2026-SO</dt><dd>one topic code</dd>
+          <dt>topic:present</dt><dd>also past, future</dd>
+          <dt>season:2025</dt><dd>topics from one season</dd>
+          <dt>cite:kessler</dt><dd>author or short cite; author: is an alias</dd>
+          <dt>year:23</dt><dd>two-digit year in the cite</dd>
+          <dt>block:"A2: Moratorium"</dt><dd>the block heading the card sits under</dd>
+          <dt>after:2026-06-01</dt><dd>source publication date; before: too</dd>
+          <dt>is:analytic</dt><dd>analytics, which are otherwise excluded</dd>
+          <dt>min_reads:5</dt><dd>read by at least five teams</dd>
+          <dt>sort:reads</dt><dd>also recent, length, relevance</dd>
+        </dl>
+        <p class="meta">Anything the parser does not recognize is searched as a
+          plain word, so a malformed operator narrows a search rather than
+          breaking it. Side filters are not available here: the shipped database
+          carries one row per canonical card, without per-round side data.</p>
+      </div>
+
+      <div id="filters" class="filters no-print" hidden>
+        <div class="filter-grid">
+          <div class="field">
+            <label for="f-after">Evidence published after</label>
+            <input id="f-after" type="date">
+          </div>
+          <div class="field">
+            <label for="f-before">Evidence published before</label>
+            <input id="f-before" type="date">
+          </div>
+          <div class="field">
+            <label for="f-year">Cite year (2-digit)</label>
+            <input id="f-year" type="text" inputmode="numeric" maxlength="4"
+                   placeholder="e.g. 22" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="f-cite">Author / cite contains</label>
+            <input id="f-cite" type="text" spellcheck="false" placeholder="e.g. kessler">
+          </div>
+          <div class="field">
+            <label for="f-reads">Read by at least (teams)</label>
+            <input id="f-reads" type="number" min="0" step="1" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="f-sort">Sort by</label>
+            <select id="f-sort">
+              <option value="">Relevance</option>
+              <option value="reads">Most read</option>
+              <option value="recent">Newest evidence</option>
+              <option value="length">Longest card</option>
+            </select>
+          </div>
+          <div class="field checkfield">
+            <input id="f-analytic" type="checkbox">
+            <label for="f-analytic">Analytics only (arguments with no card)</label>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button type="button" id="f-clear" class="quiet-btn">Clear filters</button>
+          <span class="meta">Filters are written into the search box, so any
+            search you share carries them.</span>
+        </div>
+      </div>
+      <p id="searchmeta" class="meta" aria-live="polite"></p>
+    </div>
+
+    <div id="results" aria-label="Search results"></div>
+    <div id="pager" class="pager meta no-print"></div>
+
+    <section id="empty" class="empty" aria-label="Corpus overview" hidden>
+      <table class="ruled stats-table">
+        <caption>What this index holds</caption>
+        <tbody id="stats-body"></tbody>
+      </table>
+      <div id="current-topic" class="current-topic"></div>
+    </section>
+  </section>
+
+  <!-- ---------------- card view ---------------- -->
+  <section id="view-card" hidden>
+    <div id="legend" class="legend no-print" hidden>
+      <p class="h-quiet">The parts of a cut card</p>
+      <ul>
+        <li><span class="legend-tag">Tag</span> the debater's one-sentence claim</li>
+        <li><span class="legend-cite">Cite</span> short cite spoken in round, full cite below it</li>
+        <li><u>Underlined</u> the sentences judged relevant</li>
+        <li><mark>Highlighted</mark> the exact words read aloud</li>
+        <li><span class="min">Minimized</span> kept for context, not meant to be read</li>
+      </ul>
+      <button type="button" id="legend-dismiss">Dismiss</button>
+    </div>
+
+    <article class="card-doc" id="card"></article>
+
+    <div class="card-actions no-print">
+      <button type="button" id="toggle-min" class="quiet-btn">Reading view</button>
+      <button type="button" id="copy-spoken">Copy spoken text</button>
+      <span id="copy-status" class="meta" aria-live="polite"></span>
+    </div>
+    <p class="reading-note">Reading view hides minimized text, the runs kept for
+      evidence ethics rather than for reading.</p>
+
+    <section id="card-extras" class="card-extras no-print"></section>
+    <a class="backlink no-print" href="#/" id="back-to-results">Back to results</a>
+  </section>
+
+  <!-- ---------------- about view ---------------- -->
+
+  <!-- Recent seasons: optional, never auto-prompted. openCaselist requires a
+       Tabroom account to read any disclosure, so the 2023-24+ seasons cannot
+       be indexed here and must be read live by the visitor's own browser. -->
+  <section id="view-connect" class="connect" hidden>
+    <h1>Recent seasons</h1>
+    <p>The search index on this site covers <strong>2017-18 through 2022-23</strong>.
+      Those seasons come from a public, MIT-licensed research dataset.</p>
+    <p>Seasons from <strong>2023-24 onward</strong> exist only on
+      <a href="https://opencaselist.com" rel="noopener">openCaselist</a>, which
+      requires a Tabroom account to read any disclosure at all. That is their
+      rule. If you have an account, your browser can read those seasons
+      directly.</p>
+
+    <div id="connect-status" class="notice" hidden aria-live="polite"></div>
+
+    <form id="connect-form" class="connect-form" autocomplete="on">
+      <h2>Connect to openCaselist</h2>
+
+      <div class="disclosure">
+        <p><strong>Read this before you type anything.</strong></p>
+        <ul>
+          <li>This form sends your Tabroom username and password
+            <strong>directly to openCaselist</strong>
+            (<code>api.opencaselist.com</code>) and nowhere else.</li>
+          <li>This site is static. It has no server, no backend, and no
+            database of its own. It never receives, sees, or stores your
+            login, and there is nowhere for it to be sent.</li>
+          <li>Your password is never written to storage of any kind. It is
+            read from this form, put in one request, and dropped.</li>
+          <li>openCaselist requires a Tabroom account to read any disclosure.
+            That requirement is theirs, not this site's.</li>
+          <li>Every line of this page is public and auditable:
+            <a href="https://github.com/hossboss33/pf-card-search/blob/main/site/opencaselist.js"
+               rel="noopener">opencaselist.js</a>.</li>
+          <li>If you would rather not type a password into a page you did not
+            write, run the tool locally instead — see the
+            <a href="https://github.com/hossboss33/pf-card-search#getting-the-cards"
+               rel="noopener">README</a>.</li>
+        </ul>
+      </div>
+
+      <div class="field">
+        <label for="tabroom-user">Tabroom email</label>
+        <input id="tabroom-user" name="username" type="email"
+               autocomplete="username" required spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="tabroom-pass">Tabroom password</label>
+        <input id="tabroom-pass" name="password" type="password"
+               autocomplete="current-password" required>
+      </div>
+      <div class="actions">
+        <button type="submit" id="connect-submit">Sign in to openCaselist</button>
+        <button type="button" id="connect-signout" class="quiet-btn" hidden>Sign out</button>
+      </div>
+      <p class="meta">Requests are sent one at a time, at most one per second,
+        because openCaselist is run by volunteers.</p>
+    </form>
+
+    <div id="connect-browse" hidden>
+      <h2>Browse a season</h2>
+      <p class="meta">Read live from openCaselist. Nothing is stored on this
+        site.</p>
+      <div class="field">
+        <label for="live-caselist">Season</label>
+        <select id="live-caselist"></select>
+      </div>
+      <div class="field">
+        <label for="live-school">School</label>
+        <select id="live-school" disabled></select>
+      </div>
+      <div class="field">
+        <label for="live-team">Team</label>
+        <select id="live-team" disabled></select>
+      </div>
+      <p id="live-progress" class="meta" aria-live="polite"></p>
+      <div id="live-results"></div>
+    </div>
+  </section>
+
+  <section id="view-about" class="about" hidden>
+    <h1>About this index</h1>
+
+    <h2>What it is</h2>
+    <p>A search index over Public Forum evidence that teams disclosed publicly on
+      openCaselist. Cards are grouped so that one row is one canonical card: the
+      same excerpt disclosed by twenty teams is one result, with the read counts
+      shown next to it.</p>
+    <p>There is no server. Your browser downloads only the parts of a prebuilt
+      SQLite file that your query actually touches, using HTTP range requests, so
+      searching does not require pulling the whole corpus.</p>
+
+    <h2>Coverage</h2>
+    <p id="about-coverage" class="meta">Coverage note not present in this build of the database.</p>
+    <p id="about-subset" class="meta" hidden></p>
+    <p id="about-source" class="meta"></p>
+    <table class="ruled stats-table">
+      <caption>Index contents</caption>
+      <tbody id="about-stats"></tbody>
+    </table>
+
+    <h2>Rights in the card text</h2>
+    <p>The body of every card is a quotation from a third-party publication. That
+      text is not ours and is not covered by this project's license; it belongs to
+      the publishers and authors named in each cite. Tags, cites and markup are the
+      work of the debaters who cut and disclosed the cards. Everything here is
+      reproduced for research and study of the public disclosure record, in the
+      form the debaters themselves published it. Cites are never restamped: each
+      card keeps the attribution its original cutter gave it.</p>
+    <p>If you are a rights holder and want a passage removed, open an issue on the
+      repository and it will be taken out of the next build.</p>
+
+    <h2>Credits</h2>
+    <ul class="ruled">
+      <li><a href="https://huggingface.co/datasets/Yusuf5/OpenCaselist" rel="noopener">Yusuf5/OpenCaselist</a>
+        &middot; the bulk research dataset of disclosed rounds, MIT licensed</li>
+      <li><a href="https://opencaselist.com" rel="noopener">openCaselist</a> and
+        <a href="https://github.com/ashtarcommunications/caselist" rel="noopener">Ashtar Communications</a>
+        &middot; the wiki the disclosures live on, and its open-source codebase</li>
+      <li><a href="https://www.speechanddebate.org/topics/" rel="noopener">NSDA</a>
+        &middot; the Public Forum topic list and release schedule</li>
+      <li><a href="https://github.com/phiresky/sql.js-httpvfs" rel="noopener">sql.js-httpvfs</a>
+        and <a href="https://sql.js.org/" rel="noopener">sql.js</a>
+        &middot; SQLite in the browser over range requests, MIT</li>
+      <li><a href="https://github.com/googlefonts/carlito" rel="noopener">Carlito</a>
+        &middot; the metric-compatible Calibri substitute, SIL OFL</li>
+    </ul>
+
+    <h2>Code</h2>
+    <p><a href="https://github.com/hossboss33/pf-card-search" rel="noopener">github.com/hossboss33/pf-card-search</a></p>
+    <p id="about-built" class="meta"></p>
+    <a class="backlink" href="#/">Back to search</a>
+  </section>
+
+</main>
+
+<footer class="site-footer no-print">
+  <p class="keys">Keys: <kbd>/</kbd> focus search &middot; <kbd>j</kbd> <kbd>k</kbd> or
+    arrows move selection &middot; <kbd>Enter</kbd> open &middot;
+    <kbd>y</kbd> copy spoken text &middot; <kbd>Esc</kbd> leave the search box</p>
+  <p class="meta">An index of Public Forum evidence disclosed on openCaselist. Card
+    text is quoted from third-party sources and belongs to those publishers.
+    <a href="#/about">Coverage and credits</a></p>
+</footer>
+
+<script src="vendor/httpvfs-client.js"></script>
+<script src="opencaselist.js"></script>
+<script src="docx.js"></script>
+<script src="app.js"></script>
+<script src="filters.js"></script>
+<script src="connect.js"></script>
+</body>
+</html>
