@@ -210,8 +210,12 @@
     var onlyDefault = true;   // true while the only predicate is the default
                               // analytics exclusion (see the fast path)
 
+    /* Analytics (a tag with no card under it) ship in the index and appear in
+       results by default, labelled as analytics. Spec §1.3 keeps them out of
+       *card counts*, not out of the search — they are what A2 research is
+       made of, and hiding a quarter of the corpus by default is not "every
+       card". `is:analytic` still isolates them. */
     if (pq.filters.is_analytic) { where.push("c.is_analytic = 1"); onlyDefault = false; }
-    else where.push("(c.is_analytic = 0 OR c.is_analytic IS NULL)");
 
     var codes = null;
     if (pq.filters.topic) {
@@ -322,7 +326,6 @@
         sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
               "'' AS snip, f.rank AS rank " +
               "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
-              "WHERE (c.is_analytic = 0 OR c.is_analytic IS NULL) " +
               "ORDER BY f.rank";
         params = [pq.fts, limit, offset];
         countSql = "SELECT count(*) AS n FROM card_fts WHERE card_fts MATCH ?";

@@ -33,6 +33,14 @@ season was `hspf19`, inferred from caselist-id blocks and offset probes. The
 full census finds `hspf17` (285 rows) and `hspf18` (907 rows) as well. The
 earlier conclusion came from sampling; this one reads every shard.
 
+## What the published site ships
+
+All 43,131 PF rows were ingested — the ingest ledger holds exactly 43,131
+`source='hf'` units, matching the census. They collapse to **25,771 unique
+cards** (18,818 evidence + 6,953 analytics) across 42,876 disclosures; the
+difference is the same card disclosed by many teams, plus 527 near-duplicate
+merges. The site ships all 25,771.
+
 ## The unattributed block
 
 492,628 rows (10% of the dataset) carry a null `event`, `caselistName`,
@@ -40,12 +48,18 @@ earlier conclusion came from sampling; this one reads every shard.
 most likely Open Evidence camp files and unmatched uploads. Some fraction is
 probably PF camp evidence.
 
-**These rows are deliberately excluded.** There is no metadata to attribute
-them by, and the alternative — guessing from resolution keywords — would put
-Policy and LD cards into PF topic pages with no way for a user to tell. Spec
-§6.2's rule applies: never silently guess. Recovering the PF subset of this
-block is possible future work, and it would need a stated, auditable
-attribution method, not a heuristic buried in the loader.
+**These rows are deliberately excluded, and sampling confirms that is right.**
+Reading rows from the tail (shard 100) returns cards like "Substantial can be
+0.3%" and "In context, substantial can be 902 million" (US GAO 18) alongside
+drone- and arms-sales evidence — topicality cards from the 2018-19 arms sales
+topic. That is Policy/LD camp evidence, not PF. Folding it in would bury PF
+results under Policy cards, and at roughly 10x the PF corpus it would also
+blow past what static hosting can serve.
+
+There is no metadata to attribute these rows by, and the alternative —
+guessing from resolution keywords — would put Policy and LD cards on PF topic
+pages with no way for a reader to tell. Spec §6.2's rule applies: never
+silently guess.
 
 ## Seasons 2023-24 onward are not here
 
