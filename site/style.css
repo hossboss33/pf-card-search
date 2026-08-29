@@ -544,3 +544,10 @@ body { max-width: 74rem; padding: 0 1.6rem; }
 .filters, .connect-form, .stats-table { background: var(--panel); }
 .filters { border-color: var(--rule-strong); }
 #searchmeta { font-size: 13px; color: var(--meta); padding: 0.1rem 0; }
+
+/* Result snippets carry the card's own markup, so they need the card's own
+   type treatment — but at result scale, not full card scale. */
+.result .snippet.card-doc mark { background: var(--hl); }
+.result .snippet.card-doc u { text-decoration: underline; }
+.result .snippet.card-doc strong { font-weight: 700; }
+.result .snippet.card-doc b { background: transparent; font-weight: 700; }

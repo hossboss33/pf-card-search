@@ -344,7 +344,7 @@
                       " FROM card_fts WHERE card_fts MATCH ?" +
                       " ORDER BY rank LIMIT ?";
           sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
-                "'' AS snip, f.rank AS rank " +
+                "c.markup_html AS markup_html, '' AS snip, f.rank AS rank " +
                 "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
                 "ORDER BY COALESCE(c.is_analytic, 0), f.rank " +
                 "LIMIT ? OFFSET ?";
@@ -354,7 +354,7 @@
                           " FROM card_fts WHERE card_fts MATCH ?" +
                           " ORDER BY rank LIMIT ? OFFSET ?";
           sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
-                "'' AS snip, f.rank AS rank " +
+                "c.markup_html AS markup_html, '' AS snip, f.rank AS rank " +
                 "FROM (" + innerDeep + ") f JOIN cards c ON c.id = f.rid " +
                 "ORDER BY f.rank";
           params = [pq.fts, limit, offset];
@@ -390,17 +390,112 @@
 
   /* ------------------------------------------------------------ rendering */
 
-  function snippetHtml(snip) {
+  /* Plain snippets arrive as raw text and must be escaped. Markup snippets
+     are assembled by markupSnippet() from already-escaped words plus a fixed
+     set of formatting tags, so escaping again would show the tags. Both then
+     have their term markers turned into <b>. */
+  function snippetHtml(snip, isHtml) {
     if (!snip) return "";
-    return esc(snip)
+    return (isHtml ? snip : esc(snip))
       .split(SNIP_OPEN).join("<b>")
       .split(SNIP_CLOSE).join("</b>");
   }
 
-  /* Client-side snippet for the fast search path (which fetches body_text for
-     the shown rows instead of running snippet() — see buildSearchSql). Finds
-     the first query-term hit, slices ~20 words either side, and marks every
-     term occurrence with the same control characters snippetHtml expects. */
+  /* A snippet that keeps the card's own markup.
+   *
+   * The point of this tool is that a result looks like the card as the team
+   * that cut it read it (spec §8.4). A plain-text snippet threw that away:
+   * 45% of PF disclosures carry highlighting and none of it survived into the
+   * results list, so every card looked unhighlighted. This walks the markup,
+   * records for each word whether it sits inside <mark>/<u>/<strong>, windows
+   * around the first query hit, and re-emits those tags. Headings are skipped
+   * so the tag and cite are not repeated inside the snippet.
+   */
+  var SNIP_WORDS_BEFORE = 8, SNIP_WORDS_AFTER = 34;
+
+  function markupTokens(html) {
+    var doc = new DOMParser().parseFromString("<div>" + html + "</div>", "text/html");
+    var root = doc.body.firstChild;
+    var out = [];
+    (function walk(node, mark, u, strong, heading) {
+      for (var n = node.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3) {
+          if (heading) continue;
+          var parts = String(n.nodeValue).split(/\s+/);
+          for (var i = 0; i < parts.length; i++) {
+            if (parts[i]) out.push({ w: parts[i], m: mark, u: u, s: strong });
+          }
+        } else if (n.nodeType === 1) {
+          var t = n.tagName;
+          walk(n, mark || t === "MARK", u || t === "U", strong || t === "STRONG",
+               heading || /^H[1-6]$/.test(t));
+        }
+      }
+    })(root, false, false, false, false);
+    return out;
+  }
+
+  /* Where the body starts inside the markup token stream.
+     The markup holds tag, cite and body; the cite is already printed on its
+     own line above the snippet, so starting there wastes the window on a
+     repeat. cards.body_text is the body alone, so aligning its first words
+     against the tokens finds the real starting point. */
+  function bodyStart(toks, bodyText) {
+    if (!bodyText) return 0;
+    var first = String(bodyText).split(/\s+/).filter(Boolean).slice(0, 4);
+    if (first.length < 2) return 0;
+    var probe = first.join(" ").toLowerCase();
+    for (var i = 0; i < toks.length - first.length; i++) {
+      var win = [];
+      for (var j = 0; j < first.length; j++) win.push(toks[i + j].w);
+      if (win.join(" ").toLowerCase().indexOf(probe) === 0) return i;
+    }
+    return 0;
+  }
+
+  function markupSnippet(html, terms, bodyText) {
+    var toks;
+    try { toks = markupTokens(html); } catch (e) { return ""; }
+    if (!toks.length) return "";
+    var start = bodyStart(toks, bodyText);
+    if (start > 0 && start < toks.length - 5) toks = toks.slice(start);
+    var stems = terms.map(function (t) { return t.toLowerCase().replace(/[^\w]/g, ""); })
+                     .filter(function (t) { return t.length > 1; });
+    function hits(w) {
+      var lw = w.toLowerCase();
+      for (var j = 0; j < stems.length; j++) if (lw.indexOf(stems[j]) === 0) return true;
+      return false;
+    }
+    var hit = -1;
+    for (var i = 0; i < toks.length && hit < 0; i++) if (hits(toks[i].w)) hit = i;
+    if (hit < 0) hit = 0;
+    var a = Math.max(0, hit - SNIP_WORDS_BEFORE);
+    var b = Math.min(toks.length, hit + SNIP_WORDS_AFTER);
+    var html2 = "", open = null;
+    for (var k = a; k < b; k++) {
+      var tk = toks[k];
+      var cls = tk.m ? "mark" : (tk.u && tk.s ? "us" : (tk.u ? "u" : (tk.s ? "s" : null)));
+      if (cls !== open) {
+        if (open) html2 += open === "mark" ? "</mark>"
+                          : open === "us" ? "</u></strong>"
+                          : open === "u" ? "</u>" : "</strong>";
+        if (cls) html2 += cls === "mark" ? "<mark>"
+                          : cls === "us" ? "<strong><u>"
+                          : cls === "u" ? "<u>" : "<strong>";
+        open = cls;
+      }
+      html2 += (k > a ? " " : "") + esc(tk.w).replace(/^/, hits(tk.w) ? SNIP_OPEN : "")
+               + (hits(tk.w) ? SNIP_CLOSE : "");
+    }
+    if (open) html2 += open === "mark" ? "</mark>"
+                       : open === "us" ? "</u></strong>"
+                       : open === "u" ? "</u>" : "</strong>";
+    return (a > 0 ? "\u2026" : "") + html2 + (b < toks.length ? "\u2026" : "");
+  }
+
+  /* Plain-text fallback for rows with no markup at all: finds the first
+     query-term hit, slices a window either side, and marks every term
+     occurrence with the control characters snippetHtml expects. */
   function makeSnippet(body, terms) {
     if (!body) return "";
     var words = body.split(/\s+/);
@@ -454,7 +549,9 @@
           (r.fullcite ? ' <span class="fullcite">' + esc(r.fullcite) + "</span>" : "") +
         "</div>" +
         '<div class="provenance-line">' + provenanceLine(r) + "</div>" +
-        (r.snip ? '<div class="snippet">' + snippetHtml(r.snip) + "</div>" : "") +
+        (r.snipHtml
+           ? '<div class="snippet card-doc">' + snippetHtml(r.snipHtml, true) + "</div>"
+           : (r.snip ? '<div class="snippet">' + snippetHtml(r.snip) + "</div>" : "")) +
       "</article>";
     }).join("");
     if (append) el.results.insertAdjacentHTML("beforeend", html);
@@ -490,8 +587,14 @@
       if (seq !== state.seq) return;
       /* Fast-path rows carry body_text instead of a server-built snippet. */
       for (var ri = 0; ri < rows.length; ri++) {
-        if (!rows[ri].snip && rows[ri].body_text) {
-          rows[ri].snip = makeSnippet(rows[ri].body_text, pq.pos);
+        if (!rows[ri].snip) {
+          if (rows[ri].markup_html) {
+            rows[ri].snipHtml = markupSnippet(rows[ri].markup_html, pq.pos,
+                                             rows[ri].body_text);
+          }
+          if (!rows[ri].snipHtml && rows[ri].body_text) {
+            rows[ri].snip = makeSnippet(rows[ri].body_text, pq.pos);
+          }
         }
       }
       return db.query(built.countSql, built.countParams).then(function (cnt) {
