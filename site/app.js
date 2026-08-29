@@ -616,11 +616,18 @@
       });
     }).catch(function (err) {
       if (seq !== state.seq) return;
-      /* A query should never fail: every term is quoted before it reaches FTS5.
-         If one does, say so plainly instead of leaving a stale result list. */
-      el.results.innerHTML = "";
-      el.pager.innerHTML = "";
-      el.searchmeta.textContent = "That search could not be run: " + (err.message || err);
+      /* A poisoned HTTP cache looks like a corrupt database; refetch once and
+         run the search again before reporting anything to the reader. */
+      return healAndRetry(err, function () { return runSearch(q, append); })
+        ["catch"](function (finalErr) {
+          if (seq !== state.seq) return;
+          /* A query should never fail: every term is quoted before it reaches
+             FTS5. If one does, say so plainly rather than leave a stale list. */
+          el.results.innerHTML = "";
+          el.pager.innerHTML = "";
+          el.searchmeta.textContent = "That search could not be run: " +
+            (finalErr && finalErr.message ? finalErr.message : finalErr);
+        });
     });
   }
 
@@ -1117,12 +1124,15 @@
       });
   }
 
-  function openDb() {
+  function openDb(cacheBust) {
     var conf = {
       serverMode: cfg.serverMode === "chunked" ? "chunked" : "full",
       url: cfg.db,
       requestChunkSize: cfg.requestChunkSize || 1024
     };
+    /* The worker appends ?cb=<value> to every range request. Used only to
+       recover from a poisoned HTTP cache (see healAndRetry). */
+    if (cacheBust) conf.cacheBust = String(cacheBust);
     if (conf.serverMode === "chunked") {
       /* The worker fetches urlPrefix + a zero-padded part index. */
       conf.urlPrefix = cfg.urlPrefix;
@@ -1137,6 +1147,30 @@
       "vendor/sqlite.worker.v2.js",
       "vendor/sql-wasm.wasm"
     );
+  }
+
+  /* A browser can end up holding stale byte ranges for the database — a
+     fetch interrupted mid-deploy, say — and SQLite then reports "database
+     disk image is malformed" or fails to construct the FTS vtable even
+     though the served file is byte-perfect. Verified by reassembling the
+     deployed chunks: identical sha256, PRAGMA integrity_check ok. Rather
+     than leave a dead search box, reopen once with a cache-busting query so
+     every range is refetched, and retry.  */
+  var CORRUPT_RE = /malformed|vtable|disk image|not a database/i;
+  var healing = false;
+
+  function healAndRetry(err, retry) {
+    if (healing || !CORRUPT_RE.test(String(err && err.message || err))) {
+      return Promise.reject(err);
+    }
+    healing = true;
+    el.searchmeta.textContent = "Refetching the index\u2026";
+    return openDb(Date.now()).then(function (worker) {
+      db = worker;
+      window.__db = worker;
+      healing = false;
+      return retry();
+    })["catch"](function (e2) { healing = false; throw e2; });
   }
 
   /* The database is read over HTTP a page at a time. The FIRST full-text
