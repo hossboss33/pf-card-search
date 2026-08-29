@@ -12,6 +12,7 @@
   var DEBOUNCE_MS = 150;
   /* snippet() markers: two control characters, so they survive HTML
      escaping and cannot collide with anything in the card text. */
+  var RERANK_WINDOW = 300;   /* rows re-ranked so evidence leads analytics */
   var SNIP_OPEN = "\u0001";
   var SNIP_CLOSE = "\u0002";
 
@@ -135,6 +136,12 @@
           case "block":
             pq.filters.block = val;
             break;
+          case "event":
+            var ev = val.toLowerCase();
+            ev = { policy: "cx", cx: "cx", ld: "ld", "lincoln-douglas": "ld",
+                   pf: "pf", "public-forum": "pf", publicforum: "pf" }[ev];
+            if (ev) pq.filters.event = ev; else handled = false;
+            break;
           case "before":
             if (/^\d{4}-\d{2}-\d{2}$/.test(val)) pq.filters.before = val;
             else handled = false;
@@ -215,6 +222,11 @@
        *card counts*, not out of the search — they are what A2 research is
        made of, and hiding a quarter of the corpus by default is not "every
        card". `is:analytic` still isolates them. */
+    if (pq.filters.event) {
+      onlyDefault = false;
+      where.push("(',' || COALESCE(c.events,'pf') || ',') LIKE ?");
+      params.push("%," + pq.filters.event + ",%");
+    }
     if (pq.filters.is_analytic) { where.push("c.is_analytic = 1"); onlyDefault = false; }
 
     var codes = null;
@@ -320,14 +332,33 @@
            the snippet()-bearing shapes 20+ s). So no snippet() here at all:
            rank on index data, join `cards` for the 30 shown rows, and build
            the snippet in JS from body_text, which those rows carry anyway. */
-        var inner = "SELECT rowid AS rid, " + rank +
-                    " FROM card_fts WHERE card_fts MATCH ?" +
-                    " ORDER BY rank LIMIT ? OFFSET ?";
-        sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
-              "'' AS snip, f.rank AS rank " +
-              "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
-              "ORDER BY f.rank";
-        params = [pq.fts, limit, offset];
+        /* Analytics are a tag with no body, so bm25 — which weights tag 5.0
+           and rewards short documents — floats them above real evidence. They
+           belong in the results (they are what A2 research is made of) but not
+           ahead of cards. Rank a window inside FTS, then order that window
+           with evidence first. The window is bounded, so beyond it we fall
+           back to plain relevance rather than paging incoherently. */
+        var window = RERANK_WINDOW;
+        if (offset + limit <= window) {
+          var inner = "SELECT rowid AS rid, " + rank +
+                      " FROM card_fts WHERE card_fts MATCH ?" +
+                      " ORDER BY rank LIMIT ?";
+          sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
+                "'' AS snip, f.rank AS rank " +
+                "FROM (" + inner + ") f JOIN cards c ON c.id = f.rid " +
+                "ORDER BY COALESCE(c.is_analytic, 0), f.rank " +
+                "LIMIT ? OFFSET ?";
+          params = [pq.fts, window, limit, offset];
+        } else {
+          var innerDeep = "SELECT rowid AS rid, " + rank +
+                          " FROM card_fts WHERE card_fts MATCH ?" +
+                          " ORDER BY rank LIMIT ? OFFSET ?";
+          sql = "SELECT " + COLS + ", c.body_text AS body_text, " +
+                "'' AS snip, f.rank AS rank " +
+                "FROM (" + innerDeep + ") f JOIN cards c ON c.id = f.rid " +
+                "ORDER BY f.rank";
+          params = [pq.fts, limit, offset];
+        }
         countSql = "SELECT count(*) AS n FROM card_fts WHERE card_fts MATCH ?";
         countParams = [pq.fts];
         return { sql: sql, params: params,
@@ -854,22 +885,53 @@
     el.viewSearch.hidden = true;
   }
 
-  function renderStats(tbody) {
+  /* The About page keeps a plain table: it is a reference section, not a
+     landing page, and a labelled row reads better there than big numerals. */
+  function renderAboutStats(tbody) {
+    if (!tbody) return;
     var rows = [
-      ["Canonical cards", meta.card_count],
-      ["Analytics", meta.analytic_count],
-      ["Teams", meta.team_count],
-      ["Schools", meta.school_count],
+      ["Cards", meta.card_count], ["Analytics", meta.analytic_count],
+      ["Teams", meta.team_count], ["Schools", meta.school_count],
       ["Seasons covered", meta.seasons_covered]
     ];
     var html = "";
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i][1] === undefined || rows[i][1] === null || rows[i][1] === "") continue;
-      html += "<tr><th scope=\"row\">" + esc(rows[i][0]) + "</th><td>" +
-        esc(rows[i][1]) + "</td></tr>";
+      var v = rows[i][1];
+      if (v === undefined || v === null || v === "") continue;
+      html += '<tr><th scope="row">' + esc(rows[i][0]) + "</th><td>" +
+              esc(String(v)) + "</td></tr>";
     }
-    if (!html) html = '<tr><th scope="row">Cards</th><td>count not recorded</td></tr>';
-    tbody.innerHTML = html;
+    tbody.innerHTML = html || '<tr><th scope="row">Cards</th><td>not recorded</td></tr>';
+  }
+
+  function group(n) {
+    var v = Number(n);
+    if (!isFinite(v)) return String(n);
+    return v.toLocaleString ? v.toLocaleString("en-US") : String(v);
+  }
+
+  /* Corpus figures, set as numerals rather than a table: the counts are the
+     most useful thing on an empty search page, so they should read as a
+     statement of what you are searching, not as a spreadsheet. */
+  function renderStats(host) {
+    if (!host) return;
+    var rows = [
+      [meta.card_count, "cards"],
+      [meta.analytic_count, "analytics"],
+      [meta.team_count, "teams"],
+      [meta.school_count, "schools"],
+      [meta.seasons_covered, "seasons"]
+    ];
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var v = rows[i][0];
+      if (v === undefined || v === null || v === "") continue;
+      var shown = rows[i][1] === "seasons" ? esc(v) : esc(group(v));
+      html += '<div class="figure"><b>' + shown + "</b><span>" +
+              esc(rows[i][1]) + "</span></div>";
+    }
+    if (!html) html = '<div class="figure"><b>—</b><span>cards</span></div>';
+    host.innerHTML = html;
   }
 
   function renderTopicPicker() {
@@ -926,7 +988,8 @@
     if (meta.built_at) {
       el.aboutBuilt.textContent = "Database built " + meta.built_at + ".";
     }
-    renderStats(el.aboutStats);
+    renderStats(document.getElementById("figures"));
+    if (el.aboutStats) renderAboutStats(el.aboutStats);
   }
 
   function merge(j) {
@@ -1131,7 +1194,7 @@
         return Promise.all([loadMeta(), loadTopics()]);
       })
       .then(function () {
-        renderStats(el.statsBody);
+        renderStats(document.getElementById("figures"));
         renderTopicPicker();
         renderCurrentTopic();
         renderAbout();

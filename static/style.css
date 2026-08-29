@@ -246,3 +246,8 @@ textarea { width: 100%; max-width: 40rem; display: block; margin: 0.2rem 0; }
   .card-doc { border: none; padding: 0; margin: 0; }
   a { color: var(--ink); text-decoration: none; }
 }
+
+/* Brand mark: a card with a highlight stripe. Flat, one accent, inherits the
+   reader's chosen highlight colour so the mark matches the cards below it. */
+.brand { display: inline-flex; align-items: center; gap: .45em; }
+.logo { flex: none; color: var(--accent); vertical-align: middle; }

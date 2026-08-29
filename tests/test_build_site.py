@@ -246,7 +246,8 @@ CARDS_COLUMNS = [
     ("summary", "TEXT", 0), ("spoken", "TEXT", 0), ("source_url", "TEXT", 0),
     ("source_pub_date", "TEXT", 0), ("is_analytic", "INTEGER", 0),
     ("team_count", "INTEGER", 0), ("school_count", "INTEGER", 0),
-    ("topic_codes", "TEXT", 0), ("pocket", "TEXT", 0), ("hat", "TEXT", 0),
+    ("topic_codes", "TEXT", 0), ("events", "TEXT", 0),
+    ("pocket", "TEXT", 0), ("hat", "TEXT", 0),
     ("block", "TEXT", 0),
 ]
 TOPICS_COLUMNS = [

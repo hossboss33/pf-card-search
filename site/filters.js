@@ -17,12 +17,12 @@
   if (!q || !panel || !toggle) return;
 
   /* Operators this panel owns. Anything else the user typed is left alone. */
-  var OWNED = ["after", "before", "year", "cite", "min_reads", "sort", "is"];
+  var OWNED = ["after", "before", "year", "cite", "min_reads", "sort", "is", "event"];
 
   var els = {
     after: $("f-after"), before: $("f-before"), year: $("f-year"),
     cite: $("f-cite"), reads: $("f-reads"), sort: $("f-sort"),
-    analytic: $("f-analytic")
+    event: $("f-event"), analytic: $("f-analytic")
   };
 
   /* Split a query into bare terms and the operators we manage. Quoted phrases
@@ -72,6 +72,7 @@
     add("cite", (els.cite.value || "").trim());
     var reads = (els.reads.value || "").trim();
     if (reads !== "" && Number(reads) > 0) add("min_reads", String(Number(reads)));
+    if (els.event.value) add("event", els.event.value);
     if (els.sort.value) add("sort", els.sort.value);
     if (els.analytic.checked) parts.push("is:analytic");
 
@@ -89,6 +90,7 @@
     els.cite.value = owned.cite || "";
     els.reads.value = owned.min_reads || "";
     els.sort.value = owned.sort || "";
+    els.event.value = owned.event || "";
     els.analytic.checked = /(^|\s)is:analytic(\s|$)/i.test(q.value);
     markActive();
   }
@@ -113,7 +115,7 @@
     clear.addEventListener("click", function () {
       els.after.value = ""; els.before.value = ""; els.year.value = "";
       els.cite.value = ""; els.reads.value = ""; els.sort.value = "";
-      els.analytic.checked = false;
+      els.event.value = ""; els.analytic.checked = false;
       apply(); markActive();
     });
   }

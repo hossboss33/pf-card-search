@@ -24,7 +24,7 @@ provenance tables are a local-app feature.
       id INTEGER PRIMARY KEY, tag TEXT, cite TEXT, fullcite TEXT,
       body_text TEXT, markup_html TEXT, summary TEXT, spoken TEXT,
       source_url TEXT, source_pub_date TEXT, is_analytic INTEGER,
-      team_count INTEGER, school_count INTEGER, topic_codes TEXT,
+      team_count INTEGER, school_count INTEGER, topic_codes TEXT, events TEXT,
       pocket TEXT, hat TEXT, block TEXT);
     CREATE VIRTUAL TABLE card_fts USING fts5(tag, cite, block, body,
       tokenize='porter unicode61 remove_diacritics 2');   -- rowid = cards.id
@@ -126,6 +126,7 @@ CREATE TABLE cards (
   team_count INTEGER,
   school_count INTEGER,
   topic_codes TEXT,
+  events TEXT,          -- distinct events this card was disclosed in: pf/cx/ld
   pocket TEXT,
   hat TEXT,
   block TEXT
@@ -343,7 +344,7 @@ def _copy_cards(conn: sqlite3.Connection) -> None:
         INSERT INTO cards (id, tag, cite, fullcite, body_text, markup_html,
                            summary, spoken, source_url, source_pub_date,
                            is_analytic, team_count, school_count,
-                           topic_codes, pocket, hat, block)
+                           topic_codes, events, pocket, hat, block)
         SELECT c.id, c.tag, c.cite, c.fullcite, c.body_text,
                v.markup_html, v.summary, v.spoken,
                c.source_url, c.source_pub_date,
@@ -357,6 +358,15 @@ def _copy_cards(conn: sqlite3.Connection) -> None:
                    THEN json(c.topic_ids)   -- minified, so both paths agree
                  ELSE COALESCE((SELECT codes FROM _tc WHERE _tc.card_id = c.id), '[]')
                END,
+               COALESCE((
+                 SELECT group_concat(DISTINCT cl.event)
+                 FROM src.card_variants v3
+                 JOIN src.rounds r ON r.id = v3.round_id
+                 JOIN src.teams t ON t.id = r.team_id
+                 JOIN src.schools sc ON sc.id = t.school_id
+                 JOIN src.caselists cl ON cl.id = sc.caselist_id
+                 WHERE v3.card_id = c.id AND cl.event IS NOT NULL
+               ), 'pf'),
                v.pocket, v.hat, v.block
         FROM _sel s
         JOIN src.cards c ON c.id = s.id

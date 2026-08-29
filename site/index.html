@@ -13,7 +13,7 @@
 
 <header class="site-header no-print">
   <nav aria-label="Main">
-    <a class="brand" href="#/">PF card search</a>
+    <a class="brand" href="#/"><svg class="logo" width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="PF Card Search"><rect x="1.5" y="2.5" width="19" height="17" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4.5" y="6" width="13" height="3" fill="var(--hl)"/><line x1="4.5" y1="12" x2="17.5" y2="12" stroke="currentColor" stroke-width="1.2"/><line x1="4.5" y1="15" x2="13" y2="15" stroke="currentColor" stroke-width="1.2"/></svg>PF Card Search</a>
     <a href="#/">Search</a>
     <a href="#/about">About</a>
     <a href="#/connect">Recent seasons</a>
@@ -107,6 +107,15 @@
             <input id="f-reads" type="number" min="0" step="1" placeholder="0">
           </div>
           <div class="field">
+            <label for="f-event">Event</label>
+            <select id="f-event">
+              <option value="">All events</option>
+              <option value="pf">Public Forum</option>
+              <option value="cx">Policy</option>
+              <option value="ld">Lincoln-Douglas</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="f-sort">Sort by</label>
             <select id="f-sort">
               <option value="">Relevance</option>
@@ -133,11 +142,21 @@
     <div id="pager" class="pager meta no-print"></div>
 
     <section id="empty" class="empty" aria-label="Corpus overview" hidden>
-      <table class="ruled stats-table">
-        <caption>What this index holds</caption>
-        <tbody id="stats-body"></tbody>
-      </table>
+      <p class="lede">Every Public Forum card disclosed on the openCaselist
+        wiki, searchable in your browser. Tags, cites and full card text, with
+        the highlighting the way the team that cut it read it.</p>
+      <div class="figures" id="figures"></div>
       <div id="current-topic" class="current-topic"></div>
+      <div class="examples">
+        <h2>Try</h2>
+        <ul>
+          <li><a href="#/q/nuclear%20deterrence">nuclear deterrence</a></li>
+          <li><a href="#/q/%22interconnection%20queue%22">"interconnection queue"</a></li>
+          <li><a href="#/q/nato%20-russia">nato -russia</a></li>
+          <li><a href="#/q/warming%20sort%3Areads">warming <code>sort:reads</code></a></li>
+          <li><a href="#/q/cite%3Akessler">cite:kessler</a></li>
+        </ul>
+      </div>
     </section>
   </section>
 
@@ -208,9 +227,18 @@
 cd pf-card-search
 python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m carddb serve</code></pre>
-    <p>Open <code>http://127.0.0.1:8321/connect</code>, sign in with your
-      Tabroom account, and sync <code>hspf23</code> through <code>hspf26</code>.
-      Those rounds are parsed in full — highlighting, underlining and all —
+    <p>Then sign in once and sync. openCaselist issues its session token for
+      two weeks, so this is a fortnightly chore, not a per-search one:</p>
+    <pre><code>.venv/bin/python -m carddb login
+.venv/bin/python -m carddb sync --caselist hspf26</code></pre>
+    <p><code>carddb login</code> asks for your Tabroom email and password,
+      sends them straight to openCaselist, and stores only the session token
+      it gets back — owner-readable, outside the repo. Your password is never
+      written to disk, never echoed, and never enters your shell history.
+      <code>carddb logout</code> removes the token. There is also a browser
+      version of the same thing at <code>http://127.0.0.1:8321/connect</code>
+      once the server is running.</p>
+    <p>Those rounds are parsed in full — highlighting, underlining and all —
       which the browser route could never have given you.</p>
     <p class="meta">Once synced, rebuilding the published index with
       <code>scripts/build_site.py</code> puts those seasons on this page for

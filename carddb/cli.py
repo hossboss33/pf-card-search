@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -181,6 +182,77 @@ def cmd_stats(args, cfg):
     return 0
 
 
+def cmd_login(args, cfg):
+    """Sign in to openCaselist once; store the session token, not the password."""
+    import getpass
+
+    import httpx
+
+    from .api_sync import _url, build_user_agent, load_endpoints
+    from .ratelimit import RateLimiter, request_with_backoff
+    from .session import save
+
+    sync_cfg = cfg.get("sync") or {}
+    user_env = sync_cfg.get("tabroom_username_env", "TABROOM_USERNAME")
+    pass_env = sync_cfg.get("tabroom_password_env", "TABROOM_PASSWORD")
+
+    username = args.username or os.environ.get(user_env)
+    if not username:
+        username = input("Tabroom email: ").strip()
+    password = os.environ.get(pass_env)
+    if not password:
+        # getpass keeps it off the screen and out of shell history.
+        password = getpass.getpass("Tabroom password (not stored): ")
+    if not username or not password:
+        print("Need a Tabroom email and password.", file=sys.stderr)
+        return 2
+
+    endpoints = load_endpoints(cfg)
+    api_base = sync_cfg.get("api_base", "https://api.opencaselist.com/v1")
+    url = _url(api_base, endpoints, "login")
+    limiter = RateLimiter(float(sync_cfg.get("rate_limit_rps", 1.0)))
+    ua = build_user_agent(cfg)
+
+    with httpx.Client(timeout=30.0, headers={"User-Agent": ua}) as client:
+        resp = request_with_backoff(
+            client, "POST", url, limiter=limiter,
+            max_retries=int(sync_cfg.get("max_retries", 5)),
+            json={"username": username, "password": password,
+                  "remember": True})
+        password = None                      # drop it immediately
+        if resp.status_code not in (200, 201):
+            print("Sign-in failed (HTTP %d). openCaselist authenticates against "
+                  "Tabroom, so use the exact email and password you use at "
+                  "tabroom.com." % resp.status_code, file=sys.stderr)
+            return 1
+        body = resp.json()
+        cookie_name = (endpoints.get("auth") or {}).get("cookie_name",
+                                                        "caselist_token")
+        token = body.get("token") or client.cookies.get(cookie_name)
+        if not token:
+            print("Signed in but no session token came back.", file=sys.stderr)
+            return 1
+        path = save(token, cookie_name=cookie_name,
+                    expires=body.get("expires"), username=username)
+
+    print("Signed in as %s." % username)
+    print("Session saved to %s (owner-only). The password was not stored."
+          % path)
+    if body.get("expires"):
+        print("Valid until %s. Re-run `carddb login` after that." % body["expires"])
+    print("Now run: carddb sync --caselist hspf26")
+    return 0
+
+
+def cmd_logout(args, cfg):
+    from .session import clear, session_path
+    if clear():
+        print("Signed out; removed %s" % session_path())
+    else:
+        print("No saved session.")
+    return 0
+
+
 def cmd_reindex(args, cfg):
     """Repair path: rebuild every FTS row and derived aggregate from the
     tables of record (e.g. after an interrupted bulk load)."""
@@ -255,6 +327,13 @@ def main(argv=None):
 
     p = sub.add_parser("stats")
     p.set_defaults(fn=cmd_stats)
+
+    p = sub.add_parser("login", help="sign in to openCaselist once")
+    p.add_argument("--username")
+    p.set_defaults(fn=cmd_login)
+
+    p = sub.add_parser("logout")
+    p.set_defaults(fn=cmd_logout)
 
     p = sub.add_parser("reindex")
     p.set_defaults(fn=cmd_reindex)

@@ -113,11 +113,27 @@ def _fetch_shard(shard: int, dest: Path, max_retries: int = 6) -> Path:
     raise RuntimeError(f"shard {shard}: giving up after {max_retries} attempts")
 
 
-def iter_shard_pf_rows(con, shard: int, local: Optional[Path] = None) -> Iterator[dict]:
-    """Yield every PF row of one shard as a plain dict."""
+def iter_shard_pf_rows(con, shard: int, local: Optional[Path] = None,
+                       events: Optional[List[str]] = None,
+                       min_dup: int = 0) -> Iterator[dict]:
+    """Yield rows of one shard as plain dicts.
+
+    `events` defaults to PF only. Other events are opt-in and paired with
+    `min_dup`, a floor on the dataset's own duplicateCount: Policy and LD are
+    together ~100x the size of PF, so they are admitted by how widely a card
+    was actually disclosed. High-duplicate rows also collapse hard under
+    dedup, so a large row slice yields a modest, high-value card set.
+    """
     src = str(local) if local else f"{BASE}/{shard:04d}.parquet"
-    cur = con.execute(
-        "SELECT * FROM read_parquet(?) WHERE event = 'pf'", [src])
+    evs = events or ["pf"]
+    placeholders = ",".join("?" * len(evs))
+    sql = "SELECT * FROM read_parquet(?) WHERE event IN (%s)" % placeholders
+    params: list = [src] + list(evs)
+    if min_dup > 0:
+        # PF is always taken in full; the floor applies only to the others.
+        sql += " AND (event = 'pf' OR TRY_CAST(duplicateCount AS INT) >= ?)"
+        params.append(min_dup)
+    cur = con.execute(sql, params)
     cols = [d[0] for d in cur.description]
     while True:
         rows = cur.fetchmany(FETCH_BATCH)
@@ -129,15 +145,18 @@ def iter_shard_pf_rows(con, shard: int, local: Optional[Path] = None) -> Iterato
 
 def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
                      shards: Optional[List[int]] = None,
-                     census_path: Optional[Path] = None) -> IngestStats:
-    """Ingest every PF row from the remote shards. Resumable per shard."""
+                     census_path: Optional[Path] = None,
+                     events: Optional[List[str]] = None,
+                     min_dup: int = 0,
+                     source_tag: str = SHARD_SOURCE) -> IngestStats:
+    """Ingest rows from the remote shards. Resumable per shard."""
     stats = stats or IngestStats()
     todo = shards if shards is not None else load_census(census_path)
     con = _connect()
     failed_shards: List[int] = []
     logger.info("remote PF load: %d shards to process", len(todo))
     for n, shard in enumerate(todo, 1):
-        if ledger_seen(conn, SHARD_SOURCE, str(shard)):
+        if ledger_seen(conn, source_tag, str(shard)):
             logger.info("[%d/%d] shard %d already ingested, skipping",
                         n, len(todo), shard)
             continue
@@ -145,7 +164,8 @@ def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
         tmp = Path(tempfile.gettempdir()) / f"pfshard-{shard:04d}.parquet"
         try:
             _fetch_shard(shard, tmp)
-            rows = list(iter_shard_pf_rows(con, shard, local=tmp))
+            rows = list(iter_shard_pf_rows(con, shard, local=tmp,
+                                           events=events, min_dup=min_dup))
         except Exception as exc:
             # One unreachable shard must not lose the whole run; it stays
             # unstamped in the ledger, so a rerun picks it up.
@@ -155,11 +175,12 @@ def ingest_remote_pf(conn, cfg: Dict, stats: Optional[IngestStats] = None,
         finally:
             if tmp.exists():
                 tmp.unlink()          # nothing accumulates on disk
-        ingest_hf_rows(conn, rows, cfg, stats)
+        ingest_hf_rows(conn, rows, cfg, stats,
+                       pf_only=(events is None or events == ["pf"]))
         # Stamp the shard only after its rows are committed by ingest_hf_rows,
         # so a crash mid-shard re-fetches that shard (its rows are ledgered
         # individually, so re-fetching still inserts nothing twice).
-        ledger_put(conn, SHARD_SOURCE, str(shard), None, now_iso())
+        ledger_put(conn, source_tag, str(shard), None, now_iso())
         conn.commit()
         logger.info("[%d/%d] shard %d: %d rows -> +%d cards +%d variants",
                     n, len(todo), shard, len(rows),

@@ -421,6 +421,20 @@ def _store_blob(conn, raw_root: Path, content: bytes, origin_url: str,
 
 
 def _login(conn, client, limiter, max_retries, api_base, endpoints, cfg) -> None:
+    cookie_name_cfg = (endpoints.get("auth") or {}).get("cookie_name",
+                                                        "caselist_token")
+    # A saved session (carddb login) beats prompting: openCaselist issues the
+    # token for two weeks, so one sign-in covers a fortnight of syncing.
+    try:
+        from .session import load as _load_session
+        saved = _load_session()
+    except Exception:
+        saved = None
+    if saved and saved.get("token"):
+        client.cookies.set(saved.get("cookie_name") or cookie_name_cfg,
+                           saved["token"])
+        return
+
     username, password = _credentials(cfg)
     url = _url(api_base, endpoints, "login")
     resp = request_with_backoff(

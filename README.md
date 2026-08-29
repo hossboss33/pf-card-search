@@ -65,10 +65,21 @@ and `/login` are public). Supply credentials as environment variables — they
 are never stored in the repo:
 
 ```bash
-export TABROOM_USERNAME=you@example.com
-export TABROOM_PASSWORD=...
+.venv/bin/python -m carddb login          # asks once, stores the session token
 .venv/bin/python -m carddb sync --caselist hspf25
 ```
+
+`carddb login` prompts for your Tabroom email and password, sends them
+straight to openCaselist, and saves only the two-week session token it gets
+back (0600, under `~/.config/pf-card-search/`). The password is never written
+to disk, never echoed to the terminal, and never lands in shell history.
+`carddb logout` removes the token. The `TABROOM_USERNAME` / `TABROOM_PASSWORD`
+environment variables still work for unattended cron runs.
+
+**A browser sign-in on the published site is not possible**, and that is
+openCaselist's design, not a gap here: their session cookie is `SameSite=Lax`
+and scoped to `opencaselist.com`, so no other origin can ever hold it. See
+`docs/api_access.md`.
 
 The sync is checkpointed, resumable, and capped at 1 request/second with
 backoff. openCaselist is a community-run nonprofit — be polite to it, and run
@@ -94,6 +105,7 @@ Then:
 | `export --cards 1,2,3 --out f.docx` | Verbatim-true .docx export (house or verbatim preset) |
 | `citehealth` | sample source URLs: alive / redirected / paywalled / dead |
 | `stats` | corpus counts |
+| `login` / `logout` | sign in to openCaselist once; stores the session token, never the password |
 | `reindex` | rebuild FTS rows + derived aggregates from the tables of record |
 | `backup` | WAL-safe online backup to `backups/`, keep 8 |
 
