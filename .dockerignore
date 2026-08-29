@@ -1,0 +1,7 @@
+site/db
+data/carddb.sqlite*
+data/raw
+.venv
+.git
+reports
+backups

@@ -76,7 +76,11 @@ to disk, never echoed to the terminal, and never lands in shell history.
 `carddb logout` removes the token. The `TABROOM_USERNAME` / `TABROOM_PASSWORD`
 environment variables still work for unattended cron runs.
 
-**A browser sign-in on the published site is not possible**, and that is
+**Want the sign-in on a website?** Run the app on a host rather than on
+static Pages — see [DEPLOY.md](DEPLOY.md). Same code, same `/connect` page,
+and the login works because the server does it.
+
+**A browser sign-in on the *static* site is not possible**, and that is
 openCaselist's design, not a gap here: their session cookie is `SameSite=Lax`
 and scoped to `opencaselist.com`, so no other origin can ever hold it. See
 `docs/api_access.md`.

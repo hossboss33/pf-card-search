@@ -592,3 +592,41 @@ def test_caselist_rows_tolerate_the_declared_schema_shape():
     ])
     assert [r["slug"] for r in rows] == ["hspf25"]
     assert rows[0]["display_name"] == "HS PF 2025-26"
+
+
+# --- hosted deployments -----------------------------------------------------
+
+def test_remote_login_opt_in_requires_https(monkeypatch):
+    """CARDDB_ALLOW_REMOTE_LOGIN lifts the loopback guard, but never over
+    plain HTTP: this page takes a password."""
+    from carddb import connect as connect_mod
+
+    class _Req:
+        def __init__(self, proto):
+            self.headers = {"x-forwarded-proto": proto} if proto else {}
+            self.app = None
+            self.scope = {}
+            self.client = None
+
+    monkeypatch.setenv("CARDDB_ALLOW_REMOTE_LOGIN", "1")
+    assert connect_mod._refusal_reason(_Req("https")) is None
+    reason = connect_mod._refusal_reason(_Req("http"))
+    assert reason and "not HTTPS" in reason
+
+
+def test_remote_login_is_off_by_default(monkeypatch):
+    """Without the opt-in, a non-loopback request is still refused."""
+    from carddb import connect as connect_mod
+    monkeypatch.delenv("CARDDB_ALLOW_REMOTE_LOGIN", raising=False)
+
+    class _App:
+        class state:      # no declared bind host
+            pass
+
+    class _Req:
+        headers = {"x-forwarded-for": "203.0.113.9"}
+        app = _App()
+        scope = {"server": ("203.0.113.9", 8321)}
+        client = None
+
+    assert connect_mod._refusal_reason(_Req()) is not None

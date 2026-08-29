@@ -315,7 +315,25 @@ def _argv_bind_host() -> Optional[str]:
 
 
 def _refusal_reason(request: Request) -> Optional[str]:
-    """None when the request may proceed, else why it may not."""
+    """None when the request may proceed, else why it may not.
+
+    The default is loopback-only: this page takes a Tabroom password, and on
+    an unencrypted or unintended bind that password would cross the network in
+    the clear. A deployed instance is the legitimate exception — the whole
+    reason to host this app rather than the static build is that the sign-in
+    works server-side — so CARDDB_ALLOW_REMOTE_LOGIN=1 is an explicit opt-in
+    for a deployment its owner controls and serves over HTTPS. It is never
+    the default, and it is not something a visitor can set.
+    """
+    if os.environ.get("CARDDB_ALLOW_REMOTE_LOGIN") == "1":
+        # Still refuse over plain HTTP: a password must not cross the network
+        # unencrypted. Hosts terminate TLS at a proxy and say so in this
+        # header, so trust it only when remote login was deliberately enabled.
+        proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+        if proto and proto != "https":
+            return ("this request arrived over %s, not HTTPS, and a password "
+                    "must not be sent unencrypted" % proto)
+        return None
     app = request.app
     declared = _declared_bind_host(app)
     argv_host = _argv_bind_host()
