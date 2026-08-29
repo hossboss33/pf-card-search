@@ -65,9 +65,17 @@ and `/login` are public). Supply credentials as environment variables — they
 are never stored in the repo:
 
 ```bash
-.venv/bin/python -m carddb login          # asks once, stores the session token
-.venv/bin/python -m carddb sync --caselist hspf25
+.venv/bin/python -m carddb signin   # opens the sign-in page, then "Sync all seasons"
 ```
+
+or, entirely from the terminal:
+
+```bash
+.venv/bin/python -m carddb login    # asks once, stores the session token
+.venv/bin/python -m carddb sync     # no season name: walks every PF season
+```
+
+Naming a season (`sync --caselist hspf25`) does just that one.
 
 `carddb login` prompts for your Tabroom email and password, sends them
 straight to openCaselist, and saves only the two-week session token it gets

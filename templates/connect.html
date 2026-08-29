@@ -54,6 +54,16 @@ tabroom.com. Never anyone else's, and never a shared or scraped account.</p>
 
 <h2 class="h-quiet">Public Forum caselists this login can see</h2>
 {% if caselists %}
+
+<div class="sync-all">
+  <form method="post" action="/connect/sync-all" class="inline-form">
+    <button type="submit"{% if running %} disabled{% endif %}>
+      Sync all {{ caselists|length }} season{{ '' if caselists|length == 1 else 's' }}</button>
+  </form>
+  <span class="meta">Walks every season below in one job. This is the normal
+    way to use it; the per-season buttons are there if you only want one.</span>
+</div>
+
 <table class="ruled">
   <caption>Slugs come from the API listing, never from guessed names.</caption>
   <thead>
@@ -74,10 +84,11 @@ tabroom.com. Never anyone else's, and never a shared or scraped account.</p>
     {%- endfor %}
   </tbody>
 </table>
-<p class="meta">Each sync walks the API at one request per second, backs off on
-429 and 5xx, checkpoints every team so a crash resumes instead of re-requesting,
-and keeps every file it fetches. One season at a time. Start the long ones
-overnight.</p>
+<p class="meta">A sync walks the API at one request per second, backs off on
+429 and 5xx, checkpoints every team so a crash resumes instead of
+re-requesting, and keeps every file it fetches. Syncing everything is one job,
+not several, and it is safe to re-run: already-fetched teams are skipped.
+Leave it running; a full backfill takes hours.</p>
 {% else %}
 <p class="meta">The listing returned no Public Forum caselists.</p>
 {% endif %}
@@ -85,7 +96,7 @@ overnight.</p>
 <h2 class="h-quiet">Sync progress</h2>
 <div id="sync-status" data-poll="{{ 'on' if running else 'off' }}">
   {% if job %}
-  <p><strong id="sync-caselist">{{ job.caselist }}</strong>
+  <p><strong id="sync-caselist">{{ job.caselist or "all seasons" }}</strong>
     <span class="meta" id="sync-state">{{ 'running' if not job.done else 'done' }}</span></p>
   <p id="sync-current">{{ job.current }}</p>
   <p class="meta" id="sync-counts">units {{ job.counts.units }} &middot;
@@ -113,8 +124,12 @@ overnight.</p>
   var errline = document.getElementById("sync-error");
   var errlist = document.getElementById("sync-errors");
   var state = document.getElementById("sync-state");
+  var which = document.getElementById("sync-caselist");
   function paint(s) {
     var c = s.counts || {};
+    /* A whole-corpus sync reports no single caselist; say so rather than
+       leaving the heading blank while it runs. */
+    if (which) { which.textContent = s.caselist || "all seasons"; }
     if (current) { current.textContent = s.current || ""; }
     if (counts) {
       counts.textContent = "units " + (c.units || 0) + " · parsed " +

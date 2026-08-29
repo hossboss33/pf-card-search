@@ -99,7 +99,9 @@ class _Credentials:
 class _Job:
     """One background sync, and everything /connect/status reports."""
 
-    def __init__(self, caselist: str):
+    def __init__(self, caselist: Optional[str]):
+        # None means every PF caselist this login can see: api_sync.sync()
+        # already enumerates and walks them all when no caselist is given.
         self.caselist = caselist
         self.started_at = now_iso()
         self.finished_at: Optional[str] = None
@@ -758,6 +760,40 @@ def register_connect(app, templates) -> None:
             target=_run_sync,
             args=(_db_path(), cfg, job, creds, client),
             name="carddb-connect-sync", daemon=True)
+        thread.start()
+        return RedirectResponse("/connect", status_code=303)
+
+    @app.post("/connect/sync-all")
+    def connect_sync_all(request: Request):
+        """Sync every PF season this login can see, in one go.
+
+        Picking seasons one at a time was busywork: api_sync.sync() with no
+        caselist already enumerates every PF caselist (archived listings
+        included) and walks them under the same 1 rps limiter and the same
+        per-team checkpoints, so this is one job, not several.
+        """
+        reason = _refusal_reason(request)
+        if reason:
+            return _page(request, status_code=403, blocked_reason=reason)
+        with _STATE.lock:
+            if not _STATE.connected:
+                _STATE.error = "not connected to openCaselist yet"
+                return RedirectResponse("/connect", status_code=303)
+            if _STATE.running:
+                _STATE.error = ("a sync is already running; one at a time "
+                                "keeps the request rate at one per second")
+                return RedirectResponse("/connect", status_code=303)
+            job = _Job(None)
+            _STATE.job = job
+            _STATE.error = None
+            _STATE.notice = ("Syncing every Public Forum season this login "
+                             "can see. This takes a while: requests are held "
+                             "to one per second.")
+            creds, client = _STATE.creds, _STATE.client
+        thread = threading.Thread(
+            target=_run_sync,
+            args=(_db_path(), cfg, job, creds, client),
+            name="carddb-connect-sync-all", daemon=True)
         thread.start()
         return RedirectResponse("/connect", status_code=303)
 

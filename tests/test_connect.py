@@ -21,6 +21,7 @@ import copy
 import json
 import logging
 import sqlite3
+import time
 import sys
 import threading
 import time
@@ -630,3 +631,31 @@ def test_remote_login_is_off_by_default(monkeypatch):
         client = None
 
     assert connect_mod._refusal_reason(_Req()) is not None
+
+
+def test_sync_all_seasons_route(monkeypatch, client):
+    """The whole point: one button syncs every PF season, not one at a time."""
+    started = {}
+
+    def fake_sync(conn, cfg, caselist=None, **kw):
+        started["caselist"] = caselist
+        from carddb.ingest import IngestStats
+        return IngestStats()
+
+    monkeypatch.setattr(connect_mod.api_sync, "sync", fake_sync)
+
+    # Pretend a login already happened.
+    # connected is defined as "has an http client", so give it a real one.
+    import httpx
+    connect_mod._STATE.set_connected(
+        None, httpx.Client(), username="someone@example.com", source="test",
+        caselists=[{"slug": "hspf26", "display_name": "HS PF 2026-27",
+                    "year": 2026, "archived": False}])
+    r = client.post("/connect/sync-all", follow_redirects=False)
+    assert r.status_code == 303
+    for _ in range(60):
+        if "caselist" in started:
+            break
+        time.sleep(0.05)
+    # None is what makes api_sync walk every PF caselist it can see.
+    assert started.get("caselist", "unset") is None

@@ -229,8 +229,14 @@ python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m carddb serve</code></pre>
     <p>Then sign in once and sync. openCaselist issues its session token for
       two weeks, so this is a fortnightly chore, not a per-search one:</p>
+    <pre><code>.venv/bin/python -m carddb signin</code></pre>
+    <p>That opens the sign-in page. Sign in, then press
+      <strong>Sync all seasons</strong> — one job covers every Public Forum
+      season your login can see, so there is nothing to pick. From the
+      terminal the same thing is:</p>
     <pre><code>.venv/bin/python -m carddb login
-.venv/bin/python -m carddb sync --caselist hspf26</code></pre>
+.venv/bin/python -m carddb sync</code></pre>
+    <p class="meta">Omitting a season name is what makes it walk them all.</p>
     <p><code>carddb login</code> asks for your Tabroom email and password,
       sends them straight to openCaselist, and stores only the session token
       it gets back — owner-readable, outside the repo. Your password is never
