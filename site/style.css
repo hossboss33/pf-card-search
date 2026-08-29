@@ -438,7 +438,8 @@ textarea { width: 100%; max-width: 40rem; display: block; margin: 0.2rem 0; }
 /* Brand mark: a card with a highlight stripe. Flat, one accent, inherits the
    reader's chosen highlight colour so the mark matches the cards below it. */
 .brand { display: inline-flex; align-items: center; gap: .45em; }
-.logo { flex: none; color: var(--accent); vertical-align: middle; }
+.logo { flex: none; color: var(--accent); display: inline-flex; }
+.logo svg { display: block; }
 
 /* ======================================================================
    Presentation pass. The brief: modern and simple, but not blank — and

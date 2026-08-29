@@ -77,6 +77,20 @@ logger = logging.getLogger("carddb.hf_loader")
 HF_SOURCE = "hf"
 BATCH_SIZE = 5000  # spec §3.3: batch inserts in transactions of ~5k rows
 
+# Below this many visible characters, a tag/fulltext-less row is an empty
+# heading rather than a card. Measured on the PF subset: 250 of 255 such rows
+# fall under 40 characters, the other 5 are real evidence.
+MARKUP_RECOVERY_MIN_CHARS = 40
+_TAGS = re.compile(r"<[^>]*>")
+
+
+def _visible_text(markup) -> str:
+    """Plain text of a markup blob, for rows that carry nothing else."""
+    if not markup:
+        return ""
+    import html as _html
+    return _html.unescape(_TAGS.sub(" ", str(markup))).strip()
+
 DATASETS_SERVER = "https://datasets-server.huggingface.co"
 DEFAULT_DATASET = "Yusuf5/OpenCaselist"
 
@@ -187,12 +201,24 @@ def _doc_identity(row: dict) -> Tuple[str, str]:
 def map_hf_row(row: dict) -> Tuple[CardRecord, Dict[str, Any]]:
     """Map one dataset row to (CardRecord, metadata dict).
 
-    Raises ValueError when the row has neither fulltext nor tag (nothing to
-    key a canonical card on)."""
+    Raises ValueError only when the row carries no readable content at all.
+
+    A small number of rows (255 of the 43,131 PF rows) have null `tag` AND
+    null `fulltext` while still carrying a populated `markup` field. Most are
+    an empty heading a debater left in the document, but five held a real
+    card — the parser that built the dataset put the text in `markup` alone.
+    Rejecting on tag/fulltext therefore silently dropped genuine evidence, so
+    the markup is used as the fallback source of body text."""
     fulltext = row.get("fulltext") or None
     tag = _s(row, "tag")
     if not fulltext and not tag:
-        raise ValueError(f"hf row {row.get('id')}: neither fulltext nor tag")
+        recovered = _visible_text(row.get("markup"))
+        if len(recovered) >= MARKUP_RECOVERY_MIN_CHARS:
+            fulltext = recovered
+        else:
+            raise ValueError(
+                f"hf row {row.get('id')}: no tag, no fulltext, and markup "
+                f"holds {len(recovered)} visible characters")
     is_analytic = not fulltext and bool(tag)  # spec §3.3
 
     spoken = row.get("spoken") or None

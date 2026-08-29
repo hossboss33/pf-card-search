@@ -205,12 +205,30 @@ def open_source(path) -> sqlite3.Connection:
     return conn
 
 
-def source_totals(src: sqlite3.Connection) -> Dict[str, int]:
+def source_totals(src: sqlite3.Connection,
+                  events: Optional[List[str]] = None) -> Dict[str, int]:
+    """Totals for the corpus this build is drawing from.
+
+    When an event filter is in force the denominator must be that event's
+    cards, not the whole local index — otherwise the subset note reports
+    deliberately out-of-scope cards (a Policy corpus, say) as "dropped", which
+    reads as data loss rather than scope.
+    """
+    where, params = "", []
+    if events:
+        where = (" WHERE EXISTS (SELECT 1 FROM card_variants v "
+                 " JOIN rounds r ON r.id = v.round_id "
+                 " JOIN teams t ON t.id = r.team_id "
+                 " JOIN schools sc ON sc.id = t.school_id "
+                 " JOIN caselists cl ON cl.id = sc.caselist_id "
+                 " WHERE v.card_id = cards.id AND cl.event IN (%s))"
+                 % ",".join("?" * len(events)))
+        params = list(events)
     row = src.execute(
         "SELECT COUNT(*) AS n, "
         " SUM(CASE WHEN COALESCE(is_analytic,0)=0 THEN 1 ELSE 0 END) AS cards, "
         " SUM(CASE WHEN COALESCE(is_analytic,0)=1 THEN 1 ELSE 0 END) AS analytics "
-        "FROM cards"
+        "FROM cards" + where, params
     ).fetchone()
     return {
         "rows": int(row["n"] or 0),
@@ -221,24 +239,39 @@ def source_totals(src: sqlite3.Connection) -> Dict[str, int]:
 
 def select_cards(src: sqlite3.Connection, include_analytics: bool = False,
                  min_reads: Optional[int] = None,
-                 max_cards: Optional[int] = None) -> List[Tuple[int, int]]:
+                 max_cards: Optional[int] = None,
+                 events: Optional[List[str]] = None) -> List[Tuple[int, int]]:
     """(id, is_analytic) for every card to ship, in descending value order.
 
     Value order is the same everywhere in this file — team_count DESC,
     body_len DESC, id ASC — so --max-cards and the byte-cap shrink keep the
     same cards, and two runs of the same build produce the same selection.
     """
+    where_event, ev_params = "", []
+    if events:
+        # Restrict to cards disclosed under these events. The local index can
+        # hold several events at once; the published build ships whichever the
+        # owner asks for.
+        where_event = (
+            " AND EXISTS (SELECT 1 FROM card_variants v "
+            "             JOIN rounds r ON r.id = v.round_id "
+            "             JOIN teams t ON t.id = r.team_id "
+            "             JOIN schools sc ON sc.id = t.school_id "
+            "             JOIN caselists cl ON cl.id = sc.caselist_id "
+            "             WHERE v.card_id = cards.id AND cl.event IN (%s))"
+            % ",".join("?" * len(events)))
+        ev_params = list(events)
     sql = (
         "SELECT id, COALESCE(is_analytic,0) AS is_analytic "
         "FROM cards "
         "WHERE (? = 1 OR COALESCE(is_analytic,0) = 0) "
-        "  AND COALESCE(team_count,0) >= ? "
-        "ORDER BY COALESCE(team_count,0) DESC, "
+        "  AND COALESCE(team_count,0) >= ?" + where_event +
+        " ORDER BY COALESCE(team_count,0) DESC, "
         "         COALESCE(body_len, LENGTH(COALESCE(body_text,''))) DESC, "
         "         id ASC"
     )
-    rows = src.execute(sql, (1 if include_analytics else 0,
-                             int(min_reads or 0))).fetchall()
+    rows = src.execute(sql, [1 if include_analytics else 0,
+                             int(min_reads or 0)] + ev_params).fetchall()
     out = [(int(r["id"]), int(r["is_analytic"])) for r in rows]
     if max_cards is not None:
         out = out[:max(0, int(max_cards))]
@@ -266,7 +299,8 @@ def _seasons_covered(seasons: Sequence[int]) -> str:
 
 def write_db(src_path: Path, out_path: Path, ids: Sequence[int], *,
              today: date, subset_note: Optional[str] = None,
-             built_at: Optional[str] = None) -> Dict[str, Any]:
+             built_at: Optional[str] = None,
+             events: Optional[List[str]] = None) -> Dict[str, Any]:
     """Write the whole shipped database from scratch. Returns a summary dict.
 
     Rebuilt from zero on every call, which is what makes the byte-cap loop
@@ -295,7 +329,7 @@ def write_db(src_path: Path, out_path: Path, ids: Sequence[int], *,
         _copy_cards(conn)
         _copy_fts(conn)
         summary = _write_topics(conn, today)
-        summary.update(_write_meta(conn, subset_note, built_at))
+        summary.update(_write_meta(conn, subset_note, built_at, events))
 
         conn.execute("DROP TABLE _tc")
         conn.execute("DROP TABLE _sel")
@@ -439,7 +473,8 @@ def _write_topics(conn: sqlite3.Connection, today: date) -> Dict[str, Any]:
 
 
 def _write_meta(conn: sqlite3.Connection, subset_note: Optional[str],
-                built_at: Optional[str]) -> Dict[str, Any]:
+                built_at: Optional[str],
+                events: Optional[List[str]] = None) -> Dict[str, Any]:
     """Every key in the contract, filled from the shipped rows — not from the
     local index, so the numbers describe what a visitor can actually search."""
     counts = conn.execute(
@@ -449,6 +484,13 @@ def _write_meta(conn: sqlite3.Connection, subset_note: Optional[str],
     card_count = int(counts["cards"] or 0)
     analytic_count = int(counts["analytics"] or 0)
 
+    # Constrain to the shipped events. A widely-read camp card is disclosed
+    # in Policy and LD as well as PF, so counting every variant of every
+    # shipped card would report Policy teams on a Public Forum index.
+    ev_clause, ev_params = "", []
+    if events:
+        ev_clause = " AND cl2.event IN (%s)" % ",".join("?" * len(events))
+        ev_params = list(events)
     agg = conn.execute("""
         SELECT COUNT(DISTINCT r.team_id) AS teams,
                COUNT(DISTINCT t.school_id) AS schools
@@ -456,7 +498,9 @@ def _write_meta(conn: sqlite3.Connection, subset_note: Optional[str],
         JOIN src.card_variants v ON v.card_id = s.id
         JOIN src.rounds r ON r.id = v.round_id
         JOIN src.teams t ON t.id = r.team_id
-    """).fetchone()
+        JOIN src.schools sc2 ON sc2.id = t.school_id
+        JOIN src.caselists cl2 ON cl2.id = sc2.caselist_id
+        WHERE 1=1""" + ev_clause, ev_params).fetchone()
     seasons = [r[0] for r in conn.execute("""
         SELECT DISTINCT cl.season
         FROM _sel s
@@ -465,8 +509,8 @@ def _write_meta(conn: sqlite3.Connection, subset_note: Optional[str],
         JOIN src.teams t ON t.id = r.team_id
         JOIN src.schools sc ON sc.id = t.school_id
         JOIN src.caselists cl ON cl.id = sc.caselist_id
-        WHERE cl.season IS NOT NULL
-    """)]
+        WHERE cl.season IS NOT NULL""" + ev_clause.replace("cl2.", "cl."),
+        ev_params)]
 
     meta = {
         "built_at": built_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -690,15 +734,16 @@ def build_site(db=DEFAULT_DB, out=DEFAULT_OUT, *, include_analytics: bool = Fals
                max_cards: Optional[int] = None, min_reads: Optional[int] = None,
                max_bytes: Optional[int] = None, today: Optional[date] = None,
                built_at: Optional[str] = None, chunk_bytes: Optional[int] = None,
-               log=_log) -> Dict[str, Any]:
+               events: Optional[List[str]] = None, log=_log) -> Dict[str, Any]:
     src_path = Path(db)
     out_path = Path(out)
     today = today or date.today()
 
     with closing(open_source(src_path)) as src:
-        totals = source_totals(src)
+        totals = source_totals(src, events=events)
         selection = select_cards(src, include_analytics=include_analytics,
-                                 min_reads=min_reads, max_cards=max_cards)
+                                 min_reads=min_reads, max_cards=max_cards,
+                                 events=events)
 
     reasons: List[str] = []
     if min_reads:
@@ -718,6 +763,7 @@ def build_site(db=DEFAULT_DB, out=DEFAULT_OUT, *, include_analytics: bool = Fals
                            list(reasons) + list(extra_reasons),
                            analytics_requested=include_analytics)
         result = write_db(src_path, out_path, [i for i, _ in sel], today=today,
+                          events=events,
                           subset_note=note, built_at=built_at)
         result["subset_note"] = note
         return result
@@ -877,6 +923,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                    help="ship only cards read by at least N teams")
     p.add_argument("--max-bytes", type=int, default=None,
                    help="hard size cap; shrinks loudly and records subset_note")
+    p.add_argument("--events", default=None,
+                   help="comma-separated events to ship (pf,cx,ld); "
+                        "default ships everything in the index")
     p.add_argument("--chunk-bytes", type=int, default=45000000,
                    help="split the built DB into parts of at most this many "
                         "bytes (GitHub rejects files over 100 MB); 0 disables")
@@ -899,7 +948,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             db=args.db, out=args.out, include_analytics=args.include_analytics,
             max_cards=args.max_cards, min_reads=args.min_reads,
             max_bytes=args.max_bytes, today=today,
-            chunk_bytes=args.chunk_bytes)
+            chunk_bytes=args.chunk_bytes,
+            events=[e.strip() for e in args.events.split(",")]
+                   if args.events else None)
     except BuildError as exc:
         print("build_site: %s" % exc, file=sys.stderr)
         return 2

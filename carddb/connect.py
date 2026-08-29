@@ -652,6 +652,18 @@ def register_connect(app, templates) -> None:
         reason = _refusal_reason(request)
         if reason:
             return _page(request, status_code=403, blocked_reason=reason)
+        # If `carddb login` already stored a live session, adopt it rather
+        # than asking for the password a second time. One sign-in, two front
+        # doors: the CLI and this page share the same two-week token.
+        if not _STATE.connected:
+            try:
+                from .session import load as _load_session
+                if _load_session():
+                    _connect(cfg, db_path, None)
+                    _STATE.notice = ("Signed in with the session saved by "
+                                     "`carddb login`.")
+            except Exception:
+                pass          # fall through to the form; never block the page
         return _page(request)
 
     @app.post("/connect")

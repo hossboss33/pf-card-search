@@ -130,12 +130,39 @@ def cmd_topics(args, cfg):
 
 
 def cmd_serve(args, cfg):
+    import threading
+    import webbrowser
+
     import uvicorn
+
     from .server import create_app
     app = create_app(db_path=resolve_path(cfg, "db"), cfg=cfg)
+    url = "http://%s:%d%s" % (args.host, args.port, args.path or "/")
+    if not args.no_open:
+        # Open once the server is actually accepting connections, so the tab
+        # does not race the bind and show a connection error.
+        def _open():
+            import socket
+            import time
+            for _ in range(100):
+                try:
+                    with socket.create_connection((args.host, args.port), 0.2):
+                        break
+                except OSError:
+                    time.sleep(0.1)
+            webbrowser.open(url)
+        threading.Thread(target=_open, daemon=True).start()
+    print("PF Card Search: %s" % url)
+    print("Press Ctrl-C to stop.")
     # Private by default (spec §0.4): binds 127.0.0.1 unless overridden.
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
+
+
+def cmd_signin(args, cfg):
+    """`carddb signin` — start the app and open the sign-in page directly."""
+    args.path = "/connect"
+    return cmd_serve(args, cfg)
 
 
 def cmd_sync(args, cfg):
@@ -307,7 +334,17 @@ def main(argv=None):
     p = sub.add_parser("serve")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8321)
+    p.add_argument("--path", default="/", help="page to open in the browser")
+    p.add_argument("--no-open", action="store_true",
+                   help="do not open a browser window")
     p.set_defaults(fn=cmd_serve)
+
+    p = sub.add_parser("signin",
+                       help="open the openCaselist sign-in page in a browser")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8321)
+    p.add_argument("--no-open", action="store_true")
+    p.set_defaults(fn=cmd_signin, path="/connect")
 
     p = sub.add_parser("sync")
     p.add_argument("--caselist")
