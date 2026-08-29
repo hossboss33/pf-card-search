@@ -125,6 +125,11 @@ def connect(path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
+    # Wait for a writer instead of failing instantly. The app and a sync are
+    # routinely open at once — `carddb signin` leaves a server holding the
+    # database — and without this a sync dies with "database is locked" and
+    # reports no cards, which looks like the sync itself being broken.
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 

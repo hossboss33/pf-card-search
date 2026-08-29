@@ -624,8 +624,24 @@ def _list_caselists(conn, client, limiter, max_retries, api_base, endpoints,
 
 
 def _sync_caselist(conn, client, limiter, max_retries, api_base, endpoints,
-                   raw_root, row, stats: IngestStats) -> None:
+                   raw_root, row, stats: IngestStats,
+                   prefer_bulk: bool = True) -> None:
     slug = str(row.get("slug") or row.get("name"))
+    if prefer_bulk:
+        # One listing call plus one transfer beats thousands of 1 rps
+        # requests, and it is the archive route openCaselist publishes for
+        # exactly this. Falls through to crawling when none is listed.
+        try:
+            from .bulk_sync import sync_caselist_bulk
+            if sync_caselist_bulk(conn, {}, client, limiter, max_retries,
+                                  api_base, endpoints, slug, stats, raw_root,
+                                  season=row.get("year"),
+                                  display_name=(row.get("display_name")
+                                                or row.get("name"))):
+                return
+        except Exception as exc:
+            log.warning("%s: bulk archive failed (%s); crawling instead",
+                        slug, exc)
     season = row.get("year")
     caselist_id = get_or_create_caselist(
         conn, slug,

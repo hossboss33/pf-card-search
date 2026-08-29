@@ -280,6 +280,116 @@ def cmd_logout(args, cfg):
     return 0
 
 
+def cmd_doctor(args, cfg):
+    """Check the sync chain link by link and say which one is broken.
+
+    "The sync doesn't work" is hard to act on; each step below either passes
+    or prints the specific reason it failed.
+    """
+    import httpx
+
+    from .api_sync import (SyncError, _get_json, _is_pf, _url,
+                           build_user_agent, load_endpoints)
+    from .ratelimit import RateLimiter
+    from .session import load as load_session, session_path
+
+    ok = True
+
+    def check(label, fn):
+        nonlocal ok
+        try:
+            detail = fn()
+            print("  ok    %-22s %s" % (label, detail or ""))
+            return True
+        except Exception as exc:
+            ok = False
+            print("  FAIL  %-22s %s" % (label, exc))
+            return False
+
+    print("carddb doctor")
+    conn = _conn(cfg)
+    sync_cfg = cfg.get("sync") or {}
+    api_base = sync_cfg.get("api_base", "https://api.opencaselist.com/v1")
+
+    check("database", lambda: "%s cards, %s variants" % (
+        conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0],
+        conn.execute("SELECT COUNT(*) FROM card_variants").fetchone()[0]))
+
+    endpoints = {}
+
+    def _load_eps():
+        nonlocal endpoints
+        endpoints = load_endpoints(cfg)
+        return "%d endpoints" % len(endpoints.get("endpoints") or {})
+    if not check("endpoints.toml", _load_eps):
+        return 1
+
+    saved = load_session()
+    if saved:
+        print("  ok    %-22s token saved %s, expires %s"
+              % ("saved session", saved.get("saved_at", "?"),
+                 saved.get("expires", "unknown")))
+    else:
+        print("  none  %-22s run: carddb login   (%s)"
+              % ("saved session", session_path()))
+
+    ua = build_user_agent(cfg)
+    limiter = RateLimiter(float(sync_cfg.get("rate_limit_rps", 1.0)))
+    retries = int(sync_cfg.get("max_retries", 5))
+
+    with httpx.Client(timeout=30.0, headers={"User-Agent": ua}) as client:
+        check("api reachable", lambda: "HTTP %d" % client.get(
+            api_base.rstrip("/") + "/status").status_code)
+
+        if not saved:
+            print("\nNo saved session, so authenticated checks are skipped.")
+            print("Run `carddb login`, then `carddb doctor` again.")
+            return 0 if ok else 1
+
+        client.cookies.set(saved.get("cookie_name") or "caselist_token",
+                           saved["token"])
+
+        rows = []
+
+        def _list():
+            nonlocal rows
+            data, _b, _u = _get_json(client, limiter, retries,
+                                     _url(api_base, endpoints, "caselists"))
+            rows = data if isinstance(data, list) else []
+            return "%d caselists visible" % len(rows)
+        if not check("session accepted", _list):
+            print("\nThe saved session was rejected. Run `carddb login` again.")
+            return 1
+
+        pf = [r for r in rows if _is_pf(r)]
+        names = ", ".join(sorted(str(r.get("slug") or r.get("name"))
+                                 for r in pf)) or "(none)"
+        print("  %-5s %-22s %s"
+              % ("ok" if pf else "FAIL", "PF caselists", names))
+        if not pf:
+            ok = False
+            print("\nThe listing has no Public Forum caselists for this "
+                  "account, which is why a sync finds nothing.")
+            return 1
+
+        first = pf[0]
+        slug = str(first.get("slug") or first.get("name"))
+
+        def _archives():
+            from .bulk_sync import choose_archive, list_archives
+            files = list_archives(client, limiter, retries, api_base,
+                                  endpoints, slug)
+            chosen = choose_archive(files)
+            return ("%d archives for %s; newest full: %s"
+                    % (len(files), slug,
+                       (chosen or {}).get("name", "none")))
+        check("bulk archives", _archives)
+
+    print("\n%s" % ("All checks passed. `carddb sync` should work."
+                     if ok else "Fix the FAIL lines above, then re-run."))
+    return 0 if ok else 1
+
+
 def cmd_reindex(args, cfg):
     """Repair path: rebuild every FTS row and derived aggregate from the
     tables of record (e.g. after an interrupted bulk load)."""
@@ -372,6 +482,10 @@ def main(argv=None):
     p = sub.add_parser("logout")
     p.set_defaults(fn=cmd_logout)
 
+    p = sub.add_parser("doctor",
+                       help="check the sync chain and report what is broken")
+    p.set_defaults(fn=cmd_doctor)
+
     p = sub.add_parser("reindex")
     p.set_defaults(fn=cmd_reindex)
 
@@ -381,6 +495,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     import logging
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # httpx logs every request at INFO, which buries our own progress lines
+    # under signed CDN URLs hundreds of characters long.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = load_config()
     started = datetime.now()
     rc = args.fn(args, cfg)
