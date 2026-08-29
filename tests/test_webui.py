@@ -521,13 +521,15 @@ def test_export_docx_route(env):
 
 
 def test_hl_setting_wiring(env):
-    # swatches for the four Word base colors, wired to --hl + data-hl
+    # Word base highlighters, wired to --hl + data-hl. Blue was dropped from
+    # the picker: at #0000FF it is so dark that highlighted text had to be
+    # inverted to stay readable, which does not look like a highlighter.
     r = env.client.get("/")
-    for hexv in ("#00FF00", "#FFFF00", "#0000FF", "#00FFFF"):
+    for hexv in ("#00FF00", "#FFFF00", "#00FFFF"):
         assert hexv in r.text
+    assert "#0000FF" not in r.text
     css = (ROOT / "static" / "style.css").read_text()
     assert "--hl: #00FF00" in css                    # default bright green
-    assert '[data-hl="blue"]' in css and "#ffffff" in css  # blue: white text
     js = (ROOT / "static" / "app.js").read_text()
     assert "localStorage" in js and "--hl" in js
 

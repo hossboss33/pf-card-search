@@ -25,8 +25,6 @@
       title="Bright green" aria-label="Set highlight color to bright green"></button>
     <button type="button" class="swatch" data-hl-name="yellow" style="background:#FFFF00"
       title="Yellow" aria-label="Set highlight color to yellow"></button>
-    <button type="button" class="swatch" data-hl-name="blue" style="background:#0000FF"
-      title="Blue" aria-label="Set highlight color to blue"></button>
     <button type="button" class="swatch" data-hl-name="turquoise" style="background:#00FFFF"
       title="Turquoise" aria-label="Set highlight color to turquoise"></button>
   </div>
@@ -173,84 +171,50 @@
 
   <!-- ---------------- about view ---------------- -->
 
-  <!-- Recent seasons: optional, never auto-prompted. openCaselist requires a
-       Tabroom account to read any disclosure, so the 2023-24+ seasons cannot
-       be indexed here and must be read live by the visitor's own browser. -->
+  <!-- Recent seasons. There is deliberately no sign-in form here: see below. -->
   <section id="view-connect" class="connect" hidden>
     <h1>Recent seasons</h1>
-    <p>The search index on this site covers <strong>2017-18 through 2022-23</strong>.
-      Those seasons come from a public, MIT-licensed research dataset.</p>
-    <p>Seasons from <strong>2023-24 onward</strong> exist only on
+
+    <p>This index covers <strong>2017-18 through 2022-23</strong> and you can
+      search every card in it right now, with no account and no sign-in.</p>
+
+    <h2>Why there is no sign-in on this page</h2>
+    <p>Seasons from 2023-24 onward exist only on
       <a href="https://opencaselist.com" rel="noopener">openCaselist</a>, which
-      requires a Tabroom account to read any disclosure at all. That is their
-      rule. If you have an account, your browser can read those seasons
-      directly.</p>
+      requires a Tabroom account to read anything. A sign-in form here would
+      not work, so there isn't one.</p>
+    <p>The reason is openCaselist's session cookie, and it is worth being exact
+      about because it is not something this site can work around:</p>
+    <ul>
+      <li>The cookie is set <code>SameSite=Lax</code>, so browsers never attach
+        it to requests coming from another site. A sign-in would appear to
+        succeed and then every following request would fail as unauthorised.</li>
+      <li>It is scoped to the <code>opencaselist.com</code> domain, so a page
+        served from <code>github.io</code> cannot hold it.</li>
+      <li>Without "remember me" it is a session cookie that dies with the tab —
+        which is why a session that seems to work expires almost immediately.</li>
+      <li><code>Cookie</code> is a forbidden header name, so a page cannot
+        attach the session itself.</li>
+    </ul>
+    <p>Their search endpoint is also capped at four searches a minute, so even
+      with a working session it could not back a search box. A form that takes
+      your Tabroom password and cannot use it would be worse than none.</p>
 
-    <div id="connect-status" class="notice" hidden aria-live="polite"></div>
-
-    <form id="connect-form" class="connect-form" autocomplete="on">
-      <h2>Connect to openCaselist</h2>
-
-      <div class="disclosure">
-        <p><strong>Read this before you type anything.</strong></p>
-        <ul>
-          <li>This form sends your Tabroom username and password
-            <strong>directly to openCaselist</strong>
-            (<code>api.opencaselist.com</code>) and nowhere else.</li>
-          <li>This site is static. It has no server, no backend, and no
-            database of its own. It never receives, sees, or stores your
-            login, and there is nowhere for it to be sent.</li>
-          <li>Your password is never written to storage of any kind. It is
-            read from this form, put in one request, and dropped.</li>
-          <li>openCaselist requires a Tabroom account to read any disclosure.
-            That requirement is theirs, not this site's.</li>
-          <li>Every line of this page is public and auditable:
-            <a href="https://github.com/hossboss33/pf-card-search/blob/main/site/opencaselist.js"
-               rel="noopener">opencaselist.js</a>.</li>
-          <li>If you would rather not type a password into a page you did not
-            write, run the tool locally instead — see the
-            <a href="https://github.com/hossboss33/pf-card-search#getting-the-cards"
-               rel="noopener">README</a>.</li>
-        </ul>
-      </div>
-
-      <div class="field">
-        <label for="tabroom-user">Tabroom email</label>
-        <input id="tabroom-user" name="username" type="email"
-               autocomplete="username" required spellcheck="false">
-      </div>
-      <div class="field">
-        <label for="tabroom-pass">Tabroom password</label>
-        <input id="tabroom-pass" name="password" type="password"
-               autocomplete="current-password" required>
-      </div>
-      <div class="actions">
-        <button type="submit" id="connect-submit">Sign in to openCaselist</button>
-        <button type="button" id="connect-signout" class="quiet-btn" hidden>Sign out</button>
-      </div>
-      <p class="meta">Requests are sent one at a time, at most one per second,
-        because openCaselist is run by volunteers.</p>
-    </form>
-
-    <div id="connect-browse" hidden>
-      <h2>Browse a season</h2>
-      <p class="meta">Read live from openCaselist. Nothing is stored on this
-        site.</p>
-      <div class="field">
-        <label for="live-caselist">Season</label>
-        <select id="live-caselist"></select>
-      </div>
-      <div class="field">
-        <label for="live-school">School</label>
-        <select id="live-school" disabled></select>
-      </div>
-      <div class="field">
-        <label for="live-team">Team</label>
-        <select id="live-team" disabled></select>
-      </div>
-      <p id="live-progress" class="meta" aria-live="polite"></p>
-      <div id="live-results"></div>
-    </div>
+    <h2>How to add the recent seasons</h2>
+    <p>Run the tool on your own machine. There, the sync talks to openCaselist
+      from Python rather than from a browser, so none of the cookie rules above
+      apply and your password never leaves your computer.</p>
+    <pre><code>git clone https://github.com/hossboss33/pf-card-search
+cd pf-card-search
+python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m carddb serve</code></pre>
+    <p>Open <code>http://127.0.0.1:8321/connect</code>, sign in with your
+      Tabroom account, and sync <code>hspf23</code> through <code>hspf26</code>.
+      Those rounds are parsed in full — highlighting, underlining and all —
+      which the browser route could never have given you.</p>
+    <p class="meta">Once synced, rebuilding the published index with
+      <code>scripts/build_site.py</code> puts those seasons on this page for
+      everyone, still with no sign-in.</p>
   </section>
 
   <section id="view-about" class="about" hidden>
@@ -319,10 +283,7 @@
 </footer>
 
 <script src="vendor/httpvfs-client.js"></script>
-<script src="opencaselist.js"></script>
-<script src="docx.js"></script>
 <script src="app.js"></script>
 <script src="filters.js"></script>
-<script src="connect.js"></script>
 </body>
 </html>

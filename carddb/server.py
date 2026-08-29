@@ -83,7 +83,6 @@ except Exception:
 HL_COLORS = [
     ("green", "Bright green", "#00FF00"),
     ("yellow", "Yellow", "#FFFF00"),
-    ("blue", "Blue", "#0000FF"),
     ("turquoise", "Turquoise", "#00FFFF"),
 ]
 HL_BY_NAME = {name: hexv for name, _, hexv in HL_COLORS}

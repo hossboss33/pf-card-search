@@ -186,9 +186,7 @@ mark, .body mark { background: var(--hl); color: inherit; }
 .body .min, .min { font-size: var(--min-size); }
 .hide-min .min { display: none; }
 
-/* Word's true Blue highlighter is dark: render highlighted text white. */
-[data-hl="blue"] mark,
-[data-hl="blue"] .result .snippet b { color: #ffffff; }
+
 
 /* consensus mode: background strength scales with highlight count */
 .ctok { position: relative; z-index: 0; }
@@ -196,7 +194,6 @@ mark, .body mark { background: var(--hl); color: inherit; }
   content: ""; position: absolute; inset: 0; z-index: -1;
   background: var(--hl); opacity: var(--w, 0);
 }
-[data-hl="blue"] .ctok[data-count]:not([data-count="0"]) { color: #ffffff; }
 
 /* --- card page extras ---------------------------------------------------- */
 .variant-controls { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; margin: 0.4rem 0; }
@@ -425,3 +422,15 @@ textarea { width: 100%; max-width: 40rem; display: block; margin: 0.2rem 0; }
   gap: .8em;
   flex-wrap: wrap;
 }
+
+/* Recent-seasons explainer: prose page, no form. */
+.connect pre {
+  border: 1px solid var(--rule);
+  padding: .7em .9em;
+  overflow-x: auto;
+  font-size: 13px;
+  background: var(--paper);
+}
+.connect code { font-size: 13px; }
+.connect ul { padding-left: 1.2em; }
+.connect li { margin: .35em 0; }

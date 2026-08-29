@@ -18,7 +18,6 @@
   var HL_COLORS = {
     green: "#00FF00",
     yellow: "#FFFF00",
-    blue: "#0000FF",
     turquoise: "#00FFFF"
   };
 
